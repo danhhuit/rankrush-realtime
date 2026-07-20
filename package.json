@@ -1,0 +1,23 @@
+{
+  "name": "rankrush-realtime",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n API,WEB -c magenta,cyan \"npm run dev -w @rankrush/api\" \"npm run dev -w @rankrush/web\"",
+    "build": "npm run build -w @rankrush/api && npm run build -w @rankrush/web",
+    "test": "npm run test -w @rankrush/api && npm run test -w @rankrush/web",
+    "seed": "npm run seed -w @rankrush/api",
+    "seed:library": "npm run seed:library -w @rankrush/api",
+    "lint": "npm run lint -w @rankrush/api && npm run lint -w @rankrush/web"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "prettier": "^3.9.5"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

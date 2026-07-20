@@ -1,0 +1,17 @@
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
+import App from "./App";
+import { PreferencesProvider } from "./preferences";
+import "./styles.css";
+import "./lobby-settings.css";
+import "./product-ui.css";
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <BrowserRouter>
+      <PreferencesProvider>
+        <App />
+      </PreferencesProvider>
+    </BrowserRouter>
+  </React.StrictMode>,
+);

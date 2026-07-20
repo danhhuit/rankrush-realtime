@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+coverage/
+*.log
+.DS_Store
+apps/web/.vite/
+*.tsbuildinfo
+*-check.png
+tmp/

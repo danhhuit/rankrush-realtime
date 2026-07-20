@@ -1,0 +1,26 @@
+services:
+  redis:
+    image: redis:7.4-alpine
+    container_name: rankrush-redis
+    command: redis-server --appendonly yes --appendfsync everysec
+    ports:
+      - "6379:6379"
+    volumes:
+      - rankrush_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: rankrush-redisinsight
+    ports:
+      - "5540:5540"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  rankrush_redis_data:
