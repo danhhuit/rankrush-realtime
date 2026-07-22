@@ -99,6 +99,8 @@ async function generateWithOllama(input: {
   subject: string;
   sourceText?: string;
   count: number;
+  language?: "vi" | "en";
+  difficulty?: "EASY" | "MEDIUM" | "HARD";
 }) {
   const schema = outputSchema(input.count);
   const source = input.sourceText?.replace(/\s+/g, " ").trim().slice(0, 24_000);
@@ -108,6 +110,15 @@ async function generateWithOllama(input: {
   const content = source
     ? `CHỦ ĐỀ: ${input.subject}\n\nTÀI LIỆU NGUỒN:\n${source}`
     : `CHỦ ĐỀ: ${input.subject}`;
+  const languageRule =
+    input.language === "en"
+      ? "Write every question, option, and explanation in English."
+      : "Viết toàn bộ câu hỏi, lựa chọn và giải thích bằng tiếng Việt.";
+  const difficultyRule = {
+    EASY: "Mức độ dễ: ưu tiên kiến thức nền tảng và diễn đạt trực tiếp.",
+    MEDIUM: "Mức độ trung bình: yêu cầu hiểu và áp dụng kiến thức.",
+    HARD: "Mức độ khó: ưu tiên phân tích, phân biệt các khái niệm gần nhau và suy luận.",
+  }[input.difficulty || "MEDIUM"];
 
   const response = await fetch(`${baseUrl()}/api/chat`, {
     method: "POST",
@@ -122,8 +133,10 @@ async function generateWithOllama(input: {
         {
           role: "system",
           content: [
-            "Bạn là chuyên gia thiết kế câu hỏi trắc nghiệm bằng tiếng Việt.",
+            "Bạn là chuyên gia thiết kế câu hỏi trắc nghiệm.",
             `Tạo đúng ${input.count} câu hỏi, mỗi câu có đúng 4 lựa chọn và chỉ một đáp án đúng.`,
+            languageRule,
+            difficultyRule,
             "Câu hỏi phải rõ ràng; phương án nhiễu hợp lý; phần giải thích ngắn gọn và nêu căn cứ cho đáp án.",
             "Không tạo câu hỏi mơ hồ, không dùng lựa chọn kiểu 'tất cả đáp án trên'.",
             groundingRule,
@@ -193,6 +206,8 @@ export async function generateQuizQuestionsSmart(input: {
   subject: string;
   sourceText?: string;
   count: number;
+  language?: "vi" | "en";
+  difficulty?: "EASY" | "MEDIUM" | "HARD";
 }): Promise<QuizGenerationResult> {
   if (config.OLLAMA_ENABLED) {
     try {

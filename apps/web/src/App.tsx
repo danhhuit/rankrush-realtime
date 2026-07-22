@@ -1,14 +1,20 @@
 import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
   type ReactNode,
+  type CSSProperties,
 } from "react";
 import {
   Activity,
+  ArrowDown,
   ArrowLeft,
+  ArrowUp,
   BarChart3,
   BookOpen,
   BriefcaseBusiness,
@@ -19,9 +25,11 @@ import {
   Copy,
   Cpu,
   Crown,
+  Dices,
   Dumbbell,
   Edit3,
   Eye,
+  EyeOff,
   Gamepad2,
   Gauge,
   Globe2,
@@ -29,13 +37,16 @@ import {
   Home as HomeIcon,
   Landmark,
   Library,
+  LoaderCircle,
   LogIn,
   LogOut,
   Medal,
+  Maximize2,
   Menu,
   Moon,
   Music2,
   Palette,
+  Pause,
   Play,
   Plus,
   QrCode,
@@ -47,6 +58,7 @@ import {
   ShieldCheck,
   FlaskConical,
   Sparkles,
+  SkipForward,
   Sun,
   Target,
   Trash2,
@@ -65,11 +77,13 @@ import {
   Route,
   Routes,
   useLocation,
+  useBlocker,
   useNavigate,
   useParams,
 } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
 import { ApiError, hostToken, playerToken, request } from "./api";
+import { AvatarCustomizer, defaultAvatar, PlayerAvatar } from "./PlayerAvatar";
 import { usePreferences } from "./preferences";
 import type {
   LeaderboardEntry,
@@ -82,26 +96,6 @@ import type {
   Snapshot,
 } from "./types";
 
-const avatars = [
-  "rocket",
-  "fox",
-  "owl",
-  "tiger",
-  "panda",
-  "bolt",
-  "star",
-  "ghost",
-];
-const avatarEmoji: Record<string, string> = {
-  rocket: "🚀",
-  fox: "🦊",
-  owl: "🦉",
-  tiger: "🐯",
-  panda: "🐼",
-  bolt: "⚡",
-  star: "🌟",
-  ghost: "👻",
-};
 const categories = [
   {
     name: "Art & Literature",
@@ -124,7 +118,7 @@ const categories = [
   {
     name: "Technology",
     icon: Cpu,
-    color: "#6c5ce7",
+    color: "#2b9fbd",
     branches: ["Redis", "Databases"],
   },
   {
@@ -152,8 +146,133 @@ const categories = [
     branches: [],
   },
 ];
+const vietnameseContentLabels: Record<string, string> = {
+  "Art & Literature": "Nghệ thuật & Văn học",
+  "Science & Nature": "Khoa học & Tự nhiên",
+  "History & Geography": "Lịch sử & Địa lý",
+  Technology: "Công nghệ",
+  Sports: "Thể thao",
+  Entertainment: "Giải trí",
+  Education: "Giáo dục",
+  Business: "Kinh doanh",
+  Books: "Sách",
+  "Visual Arts": "Mỹ thuật",
+  Astronomy: "Thiên văn học",
+  Biology: "Sinh học",
+  "Ancient History": "Lịch sử cổ đại",
+  "World Geography": "Địa lý thế giới",
+  Redis: "Redis",
+  Databases: "Cơ sở dữ liệu",
+  Football: "Bóng đá",
+  Gaming: "Trò chơi",
+  "Digital Safety": "An toàn số",
+};
+
+const randomNicknameParts = {
+  vi: {
+    adjectives: [
+      "Dũng Cảm",
+      "Nhanh Nhẹn",
+      "Tỏa Sáng",
+      "Thông Thái",
+      "Vui Vẻ",
+      "May Mắn",
+      "Bền Bỉ",
+      "Tinh Nghịch",
+      "Siêu Tốc",
+      "Mộng Mơ",
+      "Gan Dạ",
+      "Lanh Lợi",
+      "Năng Động",
+      "Điềm Tĩnh",
+      "Ấm Áp",
+      "Kỳ Diệu",
+      "Bất Bại",
+      "Tự Tin",
+      "Phi Thường",
+      "Đáng Yêu",
+    ],
+    nouns: [
+      "Cáo",
+      "Hổ",
+      "Gấu",
+      "Cú",
+      "Rái Cá",
+      "Cá Heo",
+      "Đại Bàng",
+      "Thỏ",
+      "Sói",
+      "Gấu Trúc",
+    ],
+  },
+  en: {
+    adjectives: [
+      "Brave",
+      "Swift",
+      "Bright",
+      "Clever",
+      "Happy",
+      "Lucky",
+      "Mighty",
+      "Playful",
+      "Turbo",
+      "Dreamy",
+      "Fearless",
+      "Nimble",
+      "Dynamic",
+      "Calm",
+      "Sunny",
+      "Magic",
+      "Unbeaten",
+      "Confident",
+      "Epic",
+      "Lovely",
+    ],
+    nouns: [
+      "Fox",
+      "Tiger",
+      "Bear",
+      "Owl",
+      "Otter",
+      "Dolphin",
+      "Eagle",
+      "Rabbit",
+      "Wolf",
+      "Panda",
+    ],
+  },
+} as const;
+
+function randomNickname(locale: "vi" | "en", current = "") {
+  const parts = randomNicknameParts[locale];
+  let nickname = current;
+  for (let attempt = 0; attempt < 12 && nickname === current; attempt++) {
+    const adjective =
+      parts.adjectives[Math.floor(Math.random() * parts.adjectives.length)];
+    const noun = parts.nouns[Math.floor(Math.random() * parts.nouns.length)];
+    nickname = `${adjective} ${noun}`;
+  }
+  return nickname;
+}
+function contentLabel(value: string, tr: (vi: string, en: string) => string) {
+  return tr(vietnameseContentLabels[value] || value, value);
+}
 function cx(...v: Array<string | false | undefined | null>) {
   return v.filter(Boolean).join(" ");
+}
+function displayCoverColor(color: string) {
+  return ["#6c5ce7", "#5b5bd6", "#7868f4", "#5647d7"].includes(
+    color.toLowerCase(),
+  )
+    ? "#2B9FBD"
+    : color;
+}
+async function createHostRoom(quizId: string, token: string) {
+  return request<{ id: string }>("/sessions", {
+    method: "POST",
+    token,
+    body: JSON.stringify({ quizId }),
+  });
 }
 function useToast() {
   const [message, setMessage] = useState("");
@@ -170,6 +289,161 @@ function useToast() {
       </div>
     ) : null,
   };
+}
+
+type ConfirmationOptions = {
+  title?: string;
+  tone?: "default" | "danger";
+};
+type ConfirmationRequest = ConfirmationOptions & { message: string };
+type AskConfirmation = (
+  message: string,
+  options?: ConfirmationOptions,
+) => Promise<boolean>;
+
+const ConfirmationContext = createContext<AskConfirmation | null>(null);
+
+function useConfirmation() {
+  const value = useContext(ConfirmationContext);
+  if (!value)
+    throw new Error("useConfirmation must be used inside ConfirmationProvider");
+  return value;
+}
+
+function ConfirmationProvider({ children }: { children: ReactNode }) {
+  const { tr } = usePreferences();
+  const [dialog, setDialog] = useState<ConfirmationRequest | null>(null);
+  const resolver = useRef<((accepted: boolean) => void) | null>(null);
+
+  const close = useCallback((accepted: boolean) => {
+    resolver.current?.(accepted);
+    resolver.current = null;
+    setDialog(null);
+  }, []);
+
+  const ask = useCallback<AskConfirmation>((message, options = {}) => {
+    resolver.current?.(false);
+    return new Promise<boolean>((resolve) => {
+      resolver.current = resolve;
+      setDialog({ message, ...options });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!dialog) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [dialog, close]);
+
+  return (
+    <ConfirmationContext.Provider value={ask}>
+      {children}
+      {dialog && (
+        <div
+          className="confirm-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) close(false);
+          }}
+        >
+          <section
+            className={cx(
+              "confirm-dialog",
+              dialog.tone === "danger" && "is-danger",
+            )}
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="confirm-title"
+            aria-describedby="confirm-message"
+          >
+            <div className="confirm-dialog-heading">
+              <span className="confirm-dialog-icon">
+                <CircleHelp />
+              </span>
+              <div>
+                <span className="eyebrow">
+                  {tr("Cần bạn xác nhận", "Confirmation required")}
+                </span>
+                <h2 id="confirm-title">
+                  {dialog.title || tr("Xác nhận thao tác", "Confirm action")}
+                </h2>
+              </div>
+            </div>
+            <p id="confirm-message">{dialog.message}</p>
+            <div className="confirm-dialog-actions">
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={() => close(false)}
+                autoFocus
+              >
+                {tr("Không", "No")}
+              </button>
+              <button
+                type="button"
+                className={cx(
+                  "button confirm-accept",
+                  dialog.tone === "danger" ? "button-danger" : "button-primary",
+                )}
+                onClick={() => close(true)}
+              >
+                {tr("Có", "Yes")}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+    </ConfirmationContext.Provider>
+  );
+}
+
+function useRoomLeaveGuard(active: boolean, message: string) {
+  const { tr } = usePreferences();
+  const askConfirmation = useConfirmation();
+  const bypass = useRef(false);
+  const prompting = useRef(false);
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      active &&
+      !bypass.current &&
+      `${currentLocation.pathname}${currentLocation.search}${currentLocation.hash}` !==
+        `${nextLocation.pathname}${nextLocation.search}${nextLocation.hash}`,
+  );
+
+  useEffect(() => {
+    if (!active) return;
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (bypass.current) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    return () => window.removeEventListener("beforeunload", beforeUnload);
+  }, [active]);
+
+  useEffect(() => {
+    if (blocker.state !== "blocked" || prompting.current) return;
+    prompting.current = true;
+    void askConfirmation(message, {
+      title: tr("Xác nhận rời phòng", "Leave this room?"),
+      tone: "danger",
+    }).then((accepted) => {
+      prompting.current = false;
+      if (accepted) blocker.proceed();
+      else blocker.reset();
+    });
+  }, [askConfirmation, blocker, message, tr]);
+
+  return useCallback((action: () => void) => {
+    bypass.current = true;
+    action();
+    window.setTimeout(() => {
+      bypass.current = false;
+    }, 0);
+  }, []);
 }
 function Logo() {
   return (
@@ -212,7 +486,7 @@ function PreferenceControls({ compact = false }: { compact?: boolean }) {
 }
 function Header() {
   const nav = useNavigate();
-  const { t } = usePreferences();
+  const { t, tr } = usePreferences();
   const token = hostToken();
   const [open, setOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -254,7 +528,7 @@ function Header() {
               inputMode="numeric"
               aria-label={t("roomCode")}
             />
-            <button aria-label={t("enterRoom")}>
+            <button aria-label={t("enterRoom")} disabled={pin.length !== 6}>
               <ChevronRight />
             </button>
           </form>
@@ -309,24 +583,35 @@ function Header() {
 
 function SearchDialog({ onClose }: { onClose: () => void }) {
   const nav = useNavigate();
-  const { t } = usePreferences();
+  const { t, tr } = usePreferences();
   const [query, setQuery] = useState("");
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   useEffect(() => {
-    void request<Quiz[]>("/quizzes").then(setQuizzes);
     const keyboard = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
     window.addEventListener("keydown", keyboard);
     return () => window.removeEventListener("keydown", keyboard);
   }, []);
-  const results = quizzes
-    .filter((quiz) =>
-      `${quiz.title} ${quiz.description} ${quiz.category}`
-        .toLocaleLowerCase("vi-VN")
-        .includes(query.toLocaleLowerCase("vi-VN")),
-    )
-    .slice(0, 8);
+  useEffect(() => {
+    setLoading(true);
+    setError("");
+    const timer = window.setTimeout(
+      () => {
+        void request<Quiz[]>(
+          `/quizzes?limit=8&q=${encodeURIComponent(query.trim())}`,
+        )
+          .then(setQuizzes)
+          .catch((reason) => setError((reason as Error).message))
+          .finally(() => setLoading(false));
+      },
+      query ? 250 : 0,
+    );
+    return () => window.clearTimeout(timer);
+  }, [query]);
+  const results = quizzes;
   return (
     <div className="search-backdrop" onMouseDown={onClose}>
       <section
@@ -347,25 +632,33 @@ function SearchDialog({ onClose }: { onClose: () => void }) {
         </div>
         <p>{query ? `${t("resultsFor")} “${query}”` : t("publicQuizzes")}</p>
         <div className="search-results">
-          {results.map((quiz) => (
-            <button
-              key={quiz.id}
-              onClick={() => {
-                onClose();
-                nav(`/quiz/${quiz.id}`);
-              }}
-            >
-              <span style={{ background: quiz.coverColor }}>
-                <BookOpen />
-              </span>
-              <div>
-                <b>{quiz.title}</b>
-                <small>{quiz.category}</small>
-              </div>
-              <ChevronRight />
-            </button>
-          ))}
-          {!results.length && (
+          {loading && (
+            <div className="loader">{tr("Đang tìm...", "Searching...")}</div>
+          )}
+          <ErrorBox error={error} />
+          {!loading &&
+            !error &&
+            results.map((quiz) => (
+              <button
+                key={quiz.id}
+                onClick={() => {
+                  onClose();
+                  nav(`/quiz/${quiz.id}`);
+                }}
+              >
+                <span
+                  style={{ background: displayCoverColor(quiz.coverColor) }}
+                >
+                  <BookOpen />
+                </span>
+                <div>
+                  <b>{quiz.title}</b>
+                  <small>{contentLabel(quiz.category, tr)}</small>
+                </div>
+                <ChevronRight />
+              </button>
+            ))}
+          {!loading && !error && !results.length && (
             <Empty
               icon={<Search />}
               title={t("notFound")}
@@ -384,13 +677,19 @@ function Page({
   children: ReactNode;
   className?: string;
 }) {
+  const { tr } = usePreferences();
   return (
     <>
       <Header />
       <main className={className}>{children}</main>
       <footer>
         <Logo />
-        <p>Live quiz. Real-time glory. Powered by Redis ZSET.</p>
+        <p>
+          {tr(
+            "Quiz trực tiếp, thứ hạng thời gian thực, vận hành bằng Redis ZSET.",
+            "Live quizzes and real-time rankings, powered by Redis ZSET.",
+          )}
+        </p>
         <span>© 2026 RankRush</span>
       </footer>
     </>
@@ -432,21 +731,48 @@ function Home() {
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [category, setCategory] = useState("Tất cả");
   const [subcategory, setSubcategory] = useState("Tất cả");
-  const [error, setError] = useState("");
+  const [joinError, setJoinError] = useState("");
+  const [libraryError, setLibraryError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [libraryLoading, setLibraryLoading] = useState(true);
   const activeCategory = categories.find((item) => item.name === category);
   useEffect(() => {
     request<Quiz[]>("/quizzes")
       .then(setQuizzes)
-      .catch(() => {});
+      .catch((reason) => setLibraryError((reason as Error).message))
+      .finally(() => setLibraryLoading(false));
   }, []);
   function join(e: FormEvent) {
     e.preventDefault();
     if (!/^\d{6}$/.test(pin)) {
-      setError(t("pinSixDigits"));
+      setJoinError(t("pinSixDigits"));
       return;
     }
+    setJoinError("");
     nav(`/join/${pin}`);
   }
+  async function playNow(quizId: string) {
+    const token = hostToken();
+    if (!token) {
+      sessionStorage.setItem("rr_pending_host_quiz", quizId);
+      nav("/login");
+      return;
+    }
+    try {
+      const room = await createHostRoom(quizId, token);
+      nav(`/host/${room.id}`);
+    } catch (e) {
+      setActionError((e as Error).message);
+    }
+  }
+  const featuredQuizzes = quizzes
+    .filter(
+      (quiz) =>
+        (category === "Tất cả" || quiz.category === category) &&
+        (subcategory === "Tất cả" || quiz.subcategory === subcategory),
+    )
+    .sort((a, b) => (b.popularity || 0) - (a.popularity || 0))
+    .slice(0, 12);
   return (
     <Page>
       <section className="hero">
@@ -511,7 +837,7 @@ function Home() {
                 placeholder="000 000"
                 inputMode="numeric"
               />
-              <ErrorBox error={error} />
+              <ErrorBox error={joinError} />
               <button
                 className="button button-primary button-block"
                 type="submit"
@@ -623,11 +949,11 @@ function Home() {
               >
                 <span
                   className="category-icon"
-                  style={{ color: c.color, background: `${c.color}18` }}
+                  style={{ "--category-color": c.color } as CSSProperties}
                 >
                   <CategoryIcon />
                 </span>
-                <b>{c.name}</b>
+                <b>{contentLabel(c.name, tr)}</b>
               </button>
             );
           })}
@@ -643,7 +969,7 @@ function Home() {
               <span>
                 {tr("Tạo nội dung của riêng bạn", "Create your own content")}
               </span>
-              <h2>Create a quiz</h2>
+              <h2>{tr("Tạo quiz", "Create a quiz")}</h2>
               <p>
                 {tr(
                   "Chơi miễn phí với tối đa 300 người tham gia",
@@ -672,7 +998,12 @@ function Home() {
                 )}
               </span>
               <h2>A.I.</h2>
-              <p>Generate a quiz from any subject or PDF</p>
+              <p>
+                {tr(
+                  "Tạo quiz từ bất kỳ chủ đề hoặc PDF nào",
+                  "Generate a quiz from any subject or PDF",
+                )}
+              </p>
               <Link
                 className="promo-button cyan"
                 to={hostToken() ? "/ai-create" : "/login"}
@@ -702,7 +1033,7 @@ function Home() {
                 className={subcategory === branch ? "active" : ""}
                 onClick={() => setSubcategory(branch)}
               >
-                {branch === "Tất cả" ? t("all") : branch}
+                {branch === "Tất cả" ? t("all") : contentLabel(branch, tr)}
                 {branch === "Entertainment" && (
                   <span>{tr("Phổ biến nhất", "Most popular")}</span>
                 )}
@@ -710,75 +1041,165 @@ function Home() {
             ))}
           </div>
         )}
-        <div className="quiz-grid">
-          {quizzes
-            .filter(
-              (q) =>
-                (category === "Tất cả" || q.category === category) &&
-                (subcategory === "Tất cả" || q.subcategory === subcategory),
-            )
-            .sort((a, b) => (b.popularity || 0) - (a.popularity || 0))
-            .slice(0, 12)
-            .map((q) => (
+        <ErrorBox error={libraryError || actionError} />
+        {libraryLoading ? (
+          <div className="full-loader inline-loader">
+            <LoaderCircle className="spin" />{" "}
+            {tr("Đang tải quiz...", "Loading quizzes...")}
+          </div>
+        ) : featuredQuizzes.length ? (
+          <div className="quiz-grid">
+            {featuredQuizzes.map((q) => (
               <QuizCard
                 key={q.id}
                 quiz={q}
                 publicView
                 onOpen={() => nav(`/quiz/${q.id}`)}
-                onPractice={() => nav(`/practice/${q.id}`)}
+                onPractice={() => void playNow(q.id)}
               />
             ))}
-        </div>
-      </section>
-      <section className="section">
-        <div className="feature-banner">
-          <div>
-            <span className="eyebrow light">
-              <Sparkles size={16} />{" "}
-              {tr(
-                "Trải nghiệm thật, dữ liệu thật",
-                "Real experience, real data",
-              )}
-            </span>
-            <h2>
-              {tr(
-                "Realtime không chỉ là hiệu ứng.",
-                "Real-time is more than an effect.",
-              )}
-            </h2>
-            <p>
-              {tr(
-                "RankRush dùng Redis Sorted Set để cập nhật điểm, duy trì thứ tự và trả đúng Top 10 mà không sắp xếp ở frontend hay backend.",
-                "RankRush uses Redis Sorted Sets to update scores, preserve order, and return the exact Top 10 without sorting in the frontend or backend.",
-              )}
-            </p>
-            <div className="feature-pills">
-              <span>{tr("ZINCRBY nguyên tử", "Atomic ZINCRBY")}</span>
-              <span>ZREVRANGE Top 10</span>
-              <span>Socket.IO rooms</span>
-              <span>Reconnect snapshot</span>
-            </div>
           </div>
-          <div className="mini-board">
-            <h4>
-              <Activity /> Live leaderboard
-            </h4>
-            {[
-              ["🥇", "NovaFox", 4920],
-              ["🥈", "LunaSpark", 4740],
-              ["🥉", "ByteKnight", 4560],
-              ["4", "PixelBee", 4210],
-            ].map((r, i) => (
-              <div key={i}>
-                <b>{r[0]}</b>
-                <span>{r[1]}</span>
-                <strong>{Number(r[2]).toLocaleString()}</strong>
-              </div>
+        ) : (
+          <Empty
+            icon={<Library />}
+            title={tr("Chưa có quiz phù hợp", "No matching quizzes")}
+            text={tr(
+              "Hãy chọn lĩnh vực khác hoặc tạo bộ câu hỏi đầu tiên.",
+              "Choose another category or create the first quiz.",
+            )}
+          />
+        )}
+      </section>
+      <IntroCarousel />
+    </Page>
+  );
+}
+
+function IntroCarousel() {
+  const { tr } = usePreferences();
+  const [slide, setSlide] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const slides = [
+    {
+      icon: <Radio />,
+      eyebrow: tr("Thi đấu cùng nhau", "Play together"),
+      title: tr(
+        "Bảng xếp hạng thay đổi ngay khi có đáp án.",
+        "Rankings change the moment answers arrive.",
+      ),
+      text: tr(
+        "Mọi người cùng vào bằng PIN, trả lời trên thiết bị riêng và nhìn thứ hạng cập nhật theo thời gian thực.",
+        "Everyone joins by PIN, answers on their own device, and watches the live ranking update.",
+      ),
+      visual: "leaderboard",
+    },
+    {
+      icon: <WandSparkles />,
+      eyebrow: tr("Tạo nhanh bằng AI", "Create faster with AI"),
+      title: tr(
+        "Biến một chủ đề hoặc PDF thành bộ câu hỏi.",
+        "Turn a subject or PDF into a quiz.",
+      ),
+      text: tr(
+        "Ollama chạy cục bộ giúp gợi ý câu hỏi; bạn vẫn có thể xem lại và chỉnh sửa trước khi công khai.",
+        "Local Ollama suggests questions that you can review and edit before publishing.",
+      ),
+      visual: "generator",
+    },
+    {
+      icon: <Gamepad2 />,
+      eyebrow: tr("Host kiểm soát trọn vẹn", "A complete Host console"),
+      title: tr(
+        "PIN, QR, phòng chờ và điều khiển trận đấu ở một nơi.",
+        "PIN, QR, lobby, and game controls in one place.",
+      ),
+      text: tr(
+        "Theo dõi người tham gia, tùy chỉnh luật chơi, công bố đáp án và xuất báo cáo sau trận.",
+        "Watch participants join, tune game rules, reveal answers, and open the final report.",
+      ),
+      visual: "host",
+    },
+  ] as const;
+  useEffect(() => {
+    if (paused) return;
+    const timer = window.setInterval(
+      () => setSlide((value) => (value + 1) % slides.length),
+      5200,
+    );
+    return () => window.clearInterval(timer);
+  }, [paused, slides.length]);
+  const current = slides[slide]!;
+  return (
+    <section className="section intro-carousel-section">
+      <div
+        className="intro-carousel"
+        onMouseEnter={() => setPaused(true)}
+        onMouseLeave={() => setPaused(false)}
+      >
+        <div className="intro-slide-copy" key={`${slide}-copy`}>
+          <span className="eyebrow light">
+            {current.icon} {current.eyebrow}
+          </span>
+          <h2>{current.title}</h2>
+          <p>{current.text}</p>
+          <div
+            className="carousel-dots"
+            aria-label={tr("Chọn slide", "Select slide")}
+          >
+            {slides.map((item, index) => (
+              <button
+                key={item.visual}
+                className={slide === index ? "active" : ""}
+                onClick={() => setSlide(index)}
+                aria-label={`${tr("Slide", "Slide")} ${index + 1}`}
+              />
             ))}
           </div>
         </div>
-      </section>
-    </Page>
+        <div
+          className={`intro-visual ${current.visual}`}
+          key={`${slide}-visual`}
+        >
+          {current.visual === "leaderboard" && (
+            <>
+              <h4>
+                <Activity /> Live leaderboard
+              </h4>
+              {["Nova", "Luna", "Byte", "Pixel"].map((name, index) => (
+                <div className="intro-rank" key={name}>
+                  <b>#{index + 1}</b>
+                  <span>{name}</span>
+                  <strong>{4920 - index * 230}</strong>
+                </div>
+              ))}
+            </>
+          )}
+          {current.visual === "generator" && (
+            <div className="intro-generator">
+              <BookOpen />
+              <b>{tr("Tài liệu bài học.pdf", "Lesson notes.pdf")}</b>
+              <i />
+              <i />
+              <i />
+              <span>
+                <WandSparkles />{" "}
+                {tr("Đã tạo 10 câu hỏi", "10 questions created")}
+              </span>
+            </div>
+          )}
+          {current.visual === "host" && (
+            <div className="intro-host">
+              <span>PIN</span>
+              <b>908 296</b>
+              <QRCodeSVG value="https://rankrush.local/join/908296" size={86} />
+              <small>
+                <Users /> 24 {tr("người trong phòng", "players in lobby")}
+              </small>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -787,22 +1208,103 @@ function Auth({ mode }: { mode: "login" | "register" }) {
   const nav = useNavigate();
   const [form, setForm] = useState({
     displayName: "",
+    username: "",
     email: "",
+    identifier: "",
     password: "",
+    confirmPassword: "",
+    verificationCode: "",
   });
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [devCode, setDevCode] = useState("");
+  const [codeSent, setCodeSent] = useState(false);
+  const [resendIn, setResendIn] = useState(0);
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!resendIn) return;
+    const timer = window.setInterval(
+      () => setResendIn((value) => Math.max(0, value - 1)),
+      1000,
+    );
+    return () => window.clearInterval(timer);
+  }, [resendIn]);
+  async function sendRegistrationCode() {
+    setError("");
+    setNotice("");
+    if (!form.username || !form.email) {
+      setError(
+        tr(
+          "Hãy nhập tên đăng nhập và email trước.",
+          "Enter a username and email first.",
+        ),
+      );
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await request<{
+        message: string;
+        sent: boolean;
+        devCode?: string;
+      }>("/auth/email-verification/request", {
+        method: "POST",
+        body: JSON.stringify({ username: form.username, email: form.email }),
+      });
+      setCodeSent(true);
+      setResendIn(60);
+      setDevCode(result.devCode || "");
+      setNotice(
+        result.sent
+          ? tr(
+              "Đã gửi mã 6 số đến email của bạn.",
+              "A 6-digit code was sent to your email.",
+            )
+          : result.devCode
+            ? tr(
+                "SMTP chưa cấu hình: mã thử nghiệm hiển thị bên dưới.",
+                "SMTP is not configured: the test code is shown below.",
+              )
+            : tr(
+                "SMTP chưa cấu hình và máy chủ đang ẩn mã thử nghiệm.",
+                "SMTP is not configured and the server is hiding test codes.",
+              ),
+      );
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (mode === "register" && form.password !== form.confirmPassword) {
+      setError(tr("Mật khẩu xác nhận không khớp.", "Passwords do not match."));
+      return;
+    }
     setBusy(true);
     setError("");
     try {
       const data = await request<{ token: string; user: unknown }>(
         `/auth/${mode}`,
-        { method: "POST", body: JSON.stringify(form) },
+        {
+          method: "POST",
+          body: JSON.stringify(
+            mode === "login"
+              ? { identifier: form.identifier, password: form.password }
+              : form,
+          ),
+        },
       );
       localStorage.setItem("rr_host_token", data.token);
       localStorage.setItem("rr_user", JSON.stringify(data.user));
+      const pendingQuiz = sessionStorage.getItem("rr_pending_host_quiz");
+      if (pendingQuiz) {
+        sessionStorage.removeItem("rr_pending_host_quiz");
+        const room = await createHostRoom(pendingQuiz, data.token);
+        nav(`/host/${room.id}`);
+        return;
+      }
       nav("/dashboard");
     } catch (e) {
       setError(
@@ -820,7 +1322,7 @@ function Auth({ mode }: { mode: "login" | "register" }) {
         <div>
           <Logo />
           <span className="eyebrow light">
-            <Sparkles size={16} /> Host studio
+            <Sparkles size={16} /> {tr("Phòng điều khiển Host", "Host studio")}
           </span>
           <h1>
             {tr(
@@ -878,28 +1380,68 @@ function Auth({ mode }: { mode: "login" | "register" }) {
           </p>
           <form onSubmit={submit}>
             {mode === "register" && (
+              <>
+                <label>
+                  {tr("Tên hiển thị", "Display name")}
+                  <input
+                    value={form.displayName}
+                    onChange={(e) =>
+                      setForm({ ...form, displayName: e.target.value })
+                    }
+                    placeholder={tr("Thành Danh", "John Smith")}
+                    required
+                  />
+                </label>
+                <label>
+                  {tr("Tên đăng nhập", "Username")}
+                  <input
+                    value={form.username}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        username: e.target.value
+                          .toLowerCase()
+                          .replace(/[^a-z0-9._-]/g, ""),
+                      })
+                    }
+                    placeholder="thanhdanh"
+                    minLength={3}
+                    maxLength={30}
+                    required
+                  />
+                </label>
+              </>
+            )}
+            {mode === "login" ? (
               <label>
-                {tr("Tên hiển thị", "Display name")}
+                {tr("Tên đăng nhập hoặc email", "Username or email")}
                 <input
-                  value={form.displayName}
+                  value={form.identifier}
                   onChange={(e) =>
-                    setForm({ ...form, displayName: e.target.value })
+                    setForm({ ...form, identifier: e.target.value })
                   }
-                  placeholder={tr("Thành Danh", "John Smith")}
+                  placeholder={tr(
+                    "thanhdanh hoặc you@example.com",
+                    "username or you@example.com",
+                  )}
+                  required
+                />
+              </label>
+            ) : (
+              <label>
+                Email
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => {
+                    setForm({ ...form, email: e.target.value });
+                    setCodeSent(false);
+                  }}
+                  placeholder="you@example.com"
                   required
                 />
               </label>
             )}
-            <label>
-              Email
-              <input
-                type="email"
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                placeholder="you@example.com"
-                required
-              />
-            </label>
             <label>
               {tr("Mật khẩu", "Password")}
               <input
@@ -911,12 +1453,75 @@ function Auth({ mode }: { mode: "login" | "register" }) {
                 minLength={8}
               />
             </label>
+            {mode === "register" && (
+              <>
+                <label>
+                  {tr("Xác nhận mật khẩu", "Confirm password")}
+                  <input
+                    type="password"
+                    value={form.confirmPassword}
+                    onChange={(e) =>
+                      setForm({ ...form, confirmPassword: e.target.value })
+                    }
+                    placeholder={tr(
+                      "Nhập lại mật khẩu",
+                      "Enter password again",
+                    )}
+                    required
+                    minLength={8}
+                  />
+                </label>
+                <div className="verification-row">
+                  <label>
+                    {tr("Mã xác nhận email", "Email verification code")}
+                    <input
+                      className="reset-code"
+                      inputMode="numeric"
+                      value={form.verificationCode}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          verificationCode: e.target.value
+                            .replace(/\D/g, "")
+                            .slice(0, 6),
+                        })
+                      }
+                      placeholder="000000"
+                      required
+                      maxLength={6}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="button button-secondary send-code-button"
+                    disabled={busy || resendIn > 0}
+                    onClick={() => void sendRegistrationCode()}
+                  >
+                    {resendIn
+                      ? `${resendIn}s`
+                      : codeSent
+                        ? tr("Gửi lại", "Resend")
+                        : tr("Gửi mã", "Send code")}
+                  </button>
+                </div>
+                {devCode && (
+                  <div className="dev-code">
+                    {tr("Mã phát triển", "Development code")}: <b>{devCode}</b>
+                  </div>
+                )}
+              </>
+            )}
             {mode === "login" && (
               <Link className="forgot-link" to="/forgot-password">
                 {tr("Quên mật khẩu?", "Forgot password?")}
               </Link>
             )}
             <ErrorBox error={error} />
+            {notice && (
+              <div className="success-box">
+                <Check /> {notice}
+              </div>
+            )}
             <button
               disabled={busy}
               className="button button-primary button-block button-lg"
@@ -954,21 +1559,43 @@ function Auth({ mode }: { mode: "login" | "register" }) {
 function ForgotPassword() {
   const { tr } = usePreferences();
   const [step, setStep] = useState<"request" | "reset" | "done">("request");
-  const [form, setForm] = useState({ email: "", code: "", password: "" });
+  const [form, setForm] = useState({
+    email: "",
+    code: "",
+    password: "",
+    confirmPassword: "",
+  });
   const [devCode, setDevCode] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [resendIn, setResendIn] = useState(0);
+  useEffect(() => {
+    if (!resendIn) return;
+    const timer = window.setInterval(
+      () => setResendIn((value) => Math.max(0, value - 1)),
+      1000,
+    );
+    return () => window.clearInterval(timer);
+  }, [resendIn]);
+  async function requestResetCode() {
+    const result = await request<{ devCode?: string }>(
+      "/auth/forgot-password",
+      { method: "POST", body: JSON.stringify({ email: form.email }) },
+    );
+    setDevCode(result.devCode || "");
+    setResendIn(60);
+  }
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (step === "reset" && form.password !== form.confirmPassword) {
+      setError(tr("Mật khẩu xác nhận không khớp.", "Passwords do not match."));
+      return;
+    }
     setBusy(true);
     setError("");
     try {
       if (step === "request") {
-        const result = await request<{ devCode?: string }>(
-          "/auth/forgot-password",
-          { method: "POST", body: JSON.stringify({ email: form.email }) },
-        );
-        setDevCode(result.devCode || "");
+        await requestResetCode();
         setStep("reset");
       } else {
         await request("/auth/reset-password", {
@@ -1018,8 +1645,8 @@ function ForgotPassword() {
                     "Enter your Host account email to receive a reset code.",
                   )
                 : tr(
-                    `Mã gồm 6 số đã được tạo cho ${form.email}.`,
-                    `A 6-digit code was created for ${form.email}.`,
+                    `Mã gồm 6 số đã được gửi đến ${form.email}.`,
+                    `A 6-digit code was sent to ${form.email}.`,
                   )}
             </p>
             <form onSubmit={submit}>
@@ -1060,6 +1687,22 @@ function ForgotPassword() {
                       {tr("Mã demo", "Demo code")}: <b>{devCode}</b>
                     </div>
                   )}
+                  <button
+                    type="button"
+                    className="text-button"
+                    disabled={busy || resendIn > 0}
+                    onClick={() => {
+                      setBusy(true);
+                      setError("");
+                      void requestResetCode()
+                        .catch((reason) => setError((reason as Error).message))
+                        .finally(() => setBusy(false));
+                    }}
+                  >
+                    {resendIn
+                      ? tr(`Gửi lại sau ${resendIn}s`, `Resend in ${resendIn}s`)
+                      : tr("Gửi lại mã", "Resend code")}
+                  </button>
                   <label>
                     {tr("Mật khẩu mới", "New password")}
                     <input
@@ -1076,6 +1719,22 @@ function ForgotPassword() {
                       )}
                     />
                   </label>
+                  <label>
+                    {tr("Xác nhận mật khẩu mới", "Confirm new password")}
+                    <input
+                      type="password"
+                      minLength={8}
+                      required
+                      value={form.confirmPassword}
+                      onChange={(e) =>
+                        setForm({ ...form, confirmPassword: e.target.value })
+                      }
+                      placeholder={tr(
+                        "Nhập lại mật khẩu mới",
+                        "Enter the new password again",
+                      )}
+                    />
+                  </label>
                 </>
               )}
               <ErrorBox error={error} />
@@ -1086,7 +1745,7 @@ function ForgotPassword() {
                 {busy
                   ? tr("Đang xử lý...", "Processing...")
                   : step === "request"
-                    ? tr("Tạo mã đặt lại", "Create reset code")
+                    ? tr("Gửi mã qua email", "Email reset code")
                     : tr("Đổi mật khẩu", "Change password")}
               </button>
             </form>
@@ -1124,10 +1783,10 @@ function QuizCard({
       <div
         className="quiz-cover"
         style={{
-          background: `linear-gradient(135deg,${quiz.coverColor},${quiz.coverColor}bb)`,
+          background: `linear-gradient(135deg,${displayCoverColor(quiz.coverColor)},${displayCoverColor(quiz.coverColor)}bb)`,
         }}
       >
-        <span>{quiz.category}</span>
+        <span>{contentLabel(quiz.category, tr)}</span>
         <BookOpen />
         <div className="quiz-cover-dots" />
       </div>
@@ -1146,12 +1805,12 @@ function QuizCard({
           </span>
           <span>
             <Clock3 />
-            20 {tr("giây/câu", "sec/question")}
+            {quiz.averageTimeLimitSec || 0} {tr("giây/câu", "sec/question")}
           </span>
         </div>
         {quiz.subcategory && (
           <div className="quiz-specialty">
-            <Target /> {quiz.subcategory}
+            <Target /> {contentLabel(quiz.subcategory, tr)}
             {(quiz.popularity || 0) >= 90 && (
               <b>{tr("Đang nổi bật", "Featured")}</b>
             )}
@@ -1218,7 +1877,9 @@ function Dashboard() {
   const location = useLocation();
   const quizOnly = location.pathname.endsWith("/quizzes");
   const toast = useToast();
+  const askConfirmation = useConfirmation();
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [statusFilter, setStatusFilter] = useState<"ALL" | Quiz["status"]>(
     "ALL",
   );
@@ -1235,13 +1896,23 @@ function Dashboard() {
     }
   }, []);
   const load = () =>
-    request<Quiz[]>("/quizzes?mine=1", { token })
-      .then(setQuizzes)
+    Promise.all([
+      request<Quiz[]>("/quizzes?mine=1", { token }),
+      request<SessionSummary[]>("/sessions", { token }),
+    ])
+      .then(([quizRows, sessionRows]) => {
+        setQuizzes(quizRows);
+        setSessions(sessionRows);
+      })
+      .catch((error) => toast.show((error as Error).message))
       .finally(() => setLoading(false));
   useEffect(() => {
     if (token) void load();
   }, []);
   if (!token) return <Navigate to="/login" />;
+  const visibleQuizzes = quizzes.filter(
+    (quiz) => statusFilter === "ALL" || quiz.status === statusFilter,
+  );
   async function create() {
     setCreating(true);
     try {
@@ -1252,32 +1923,20 @@ function Dashboard() {
           title: tr("Quiz chưa đặt tên", "Untitled quiz"),
           description: "",
           category: tr("Công nghệ", "Technology"),
-          coverColor: "#6C5CE7",
+          coverColor: "#2B9FBD",
           status: "DRAFT",
         }),
       });
       nav(`/editor/${q.id}`);
+    } catch (error) {
+      toast.show((error as Error).message);
     } finally {
       setCreating(false);
     }
   }
   async function host(q: Quiz) {
     try {
-      const s = await request<{ id: string }>("/sessions", {
-        method: "POST",
-        token,
-        body: JSON.stringify({
-          quizId: q.id,
-          settings: {
-            teamMode: false,
-            hideLeaderboard: false,
-            safeNames: false,
-            hideCountryFlags: false,
-            mutePlayers: false,
-            speedScoring: true,
-          },
-        }),
-      });
+      const s = await createHostRoom(q.id, token);
       nav(`/host/${s.id}`);
     } catch (e) {
       toast.show(
@@ -1288,7 +1947,15 @@ function Dashboard() {
     }
   }
   async function remove(q: Quiz) {
-    if (!confirm(tr(`Xóa quiz “${q.title}”?`, `Delete quiz “${q.title}”?`)))
+    if (
+      !(await askConfirmation(
+        tr(`Xóa quiz “${q.title}”?`, `Delete quiz “${q.title}”?`),
+        {
+          title: tr("Xóa quiz", "Delete quiz"),
+          tone: "danger",
+        },
+      ))
+    )
       return;
     await request(`/quizzes/${q.id}`, { method: "DELETE", token });
     toast.show(tr("Đã xóa quiz.", "Quiz deleted."));
@@ -1313,7 +1980,9 @@ function Dashboard() {
         <div className="dashboard-main">
           <div className="dashboard-top">
             <div>
-              <span className="eyebrow">Host studio</span>
+              <span className="eyebrow">
+                {tr("Phòng điều khiển Host", "Host studio")}
+              </span>
               <h1>
                 {quizOnly
                   ? tr("Quiz của tôi", "My quizzes")
@@ -1356,22 +2025,41 @@ function Dashboard() {
                 <span className="stat-icon teal">
                   <Radio />
                 </span>
-                <b>0</b>
+                <b>
+                  {
+                    sessions.filter(
+                      (session) =>
+                        session.state === "LOBBY" ||
+                        session.state === "RUNNING" ||
+                        session.state === "QUESTION_RESULT",
+                    ).length
+                  }
+                </b>
                 <small>{tr("Phiên đang live", "Live sessions")}</small>
               </div>
               <div>
                 <span className="stat-icon orange">
                   <Users />
                 </span>
-                <b>60</b>
-                <small>{tr("Người chơi mẫu", "Demo players")}</small>
+                <b>
+                  {sessions.reduce(
+                    (total, session) => total + session.playerCount,
+                    0,
+                  )}
+                </b>
+                <small>{tr("Tổng lượt người chơi", "Total players")}</small>
               </div>
               <div>
                 <span className="stat-icon blue">
                   <Trophy />
                 </span>
-                <b>132</b>
-                <small>{tr("Bản ghi seed", "Seed records")}</small>
+                <b>
+                  {
+                    sessions.filter((session) => session.state === "ENDED")
+                      .length
+                  }
+                </b>
+                <small>{tr("Phiên đã hoàn thành", "Completed sessions")}</small>
               </div>
             </div>
           )}
@@ -1411,22 +2099,18 @@ function Dashboard() {
               <div className="loader">
                 {tr("Đang tải quiz...", "Loading quizzes...")}
               </div>
-            ) : quizzes.length ? (
+            ) : visibleQuizzes.length ? (
               <div className="quiz-grid dashboard-grid">
-                {quizzes
-                  .filter(
-                    (q) => statusFilter === "ALL" || q.status === statusFilter,
-                  )
-                  .map((q) => (
-                    <QuizCard
-                      key={q.id}
-                      quiz={q}
-                      onOpen={() => nav(`/editor/${q.id}`)}
-                      onHost={() => void host(q)}
-                      onClone={() => void clone(q)}
-                      onDelete={() => void remove(q)}
-                    />
-                  ))}
+                {visibleQuizzes.map((q) => (
+                  <QuizCard
+                    key={q.id}
+                    quiz={q}
+                    onOpen={() => nav(`/editor/${q.id}`)}
+                    onHost={() => void host(q)}
+                    onClone={() => void clone(q)}
+                    onDelete={() => void remove(q)}
+                  />
+                ))}
               </div>
             ) : (
               <Empty
@@ -1559,14 +2243,24 @@ function DashboardWorkspace({
 }
 
 function ReportsPage() {
-  const { tr } = usePreferences();
+  const { tr, locale } = usePreferences();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [filter, setFilter] = useState<"ALL" | "ENDED" | "ACTIVE">("ALL");
   useEffect(() => {
     void request<SessionSummary[]>("/sessions", { token: hostToken() })
       .then(setSessions)
+      .catch((reason) => setError((reason as Error).message))
       .finally(() => setLoading(false));
   }, []);
+  const visibleSessions = sessions.filter((session) =>
+    filter === "ALL"
+      ? true
+      : filter === "ENDED"
+        ? session.state === "ENDED"
+        : session.state !== "ENDED" && session.state !== "CANCELLED",
+  );
   return (
     <DashboardWorkspace active="reports">
       <div className="subpage-head">
@@ -1580,12 +2274,21 @@ function ReportsPage() {
             )}
           </p>
         </div>
+        <select
+          value={filter}
+          onChange={(event) => setFilter(event.target.value as typeof filter)}
+        >
+          <option value="ALL">{tr("Tất cả", "All")}</option>
+          <option value="ENDED">{tr("Đã kết thúc", "Ended")}</option>
+          <option value="ACTIVE">{tr("Đang hoạt động", "Active")}</option>
+        </select>
       </div>
+      <ErrorBox error={error} />
       {loading ? (
         <div className="loader">{tr("Đang tải...", "Loading...")}</div>
       ) : (
         <div className="session-list">
-          {sessions.map((session) => (
+          {visibleSessions.map((session) => (
             <article key={session.id}>
               <div className="session-icon">
                 <BarChart3 />
@@ -1595,7 +2298,9 @@ function ReportsPage() {
                   {session.quiz?.title || tr("Quiz đã xóa", "Deleted quiz")}
                 </b>
                 <span>
-                  {new Date(session.createdAt).toLocaleString("vi-VN")}
+                  {new Date(session.createdAt).toLocaleString(
+                    locale === "vi" ? "vi-VN" : "en-US",
+                  )}
                 </span>
               </div>
               <span
@@ -1603,28 +2308,32 @@ function ReportsPage() {
               >
                 {session.state === "ENDED"
                   ? tr("Đã kết thúc", "Ended")
-                  : session.state === "LOBBY"
-                    ? tr("Phòng chờ", "Lobby")
-                    : tr("Đang chạy", "Running")}
+                  : session.state === "CANCELLED"
+                    ? tr("Đã hủy", "Cancelled")
+                    : session.state === "LOBBY"
+                      ? tr("Phòng chờ", "Lobby")
+                      : tr("Đang chạy", "Running")}
               </span>
               <strong>
                 {session.playerCount} {tr("người", "players")}
               </strong>
-              <Link
-                className="button button-secondary"
-                to={
-                  session.state === "ENDED"
-                    ? `/report/${session.id}`
-                    : `/host/${session.id}`
-                }
-              >
-                {session.state === "ENDED"
-                  ? tr("Xem báo cáo", "View report")
-                  : tr("Mở phiên", "Open session")}
-              </Link>
+              {session.state !== "CANCELLED" && (
+                <Link
+                  className="button button-secondary"
+                  to={
+                    session.state === "ENDED"
+                      ? `/report/${session.id}`
+                      : `/host/${session.id}`
+                  }
+                >
+                  {session.state === "ENDED"
+                    ? tr("Xem báo cáo", "View report")
+                    : tr("Mở phiên", "Open session")}
+                </Link>
+              )}
             </article>
           ))}
-          {!sessions.length && (
+          {!visibleSessions.length && (
             <Empty
               icon={<BarChart3 />}
               title={tr("Chưa có báo cáo", "No reports yet")}
@@ -1641,24 +2350,29 @@ function ReportsPage() {
 }
 
 function LeaderboardsPage() {
-  const { tr } = usePreferences();
+  const { tr, locale } = usePreferences();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [selected, setSelected] = useState("");
   const [board, setBoard] = useState<LeaderboardEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   useEffect(() => {
-    void request<SessionSummary[]>("/sessions", { token: hostToken() }).then(
-      (rows) => {
+    void request<SessionSummary[]>("/sessions", { token: hostToken() })
+      .then((rows) => {
         setSessions(rows);
         setSelected(rows[0]?.id || "");
-      },
-    );
+      })
+      .catch((reason) => setError((reason as Error).message))
+      .finally(() => setLoading(false));
   }, []);
   useEffect(() => {
     if (!selected) return;
     void request<{ leaderboard: LeaderboardEntry[] }>(
       `/sessions/${selected}/leaderboard?limit=100`,
       { token: hostToken() },
-    ).then((data) => setBoard(data.leaderboard));
+    )
+      .then((data) => setBoard(data.leaderboard))
+      .catch((reason) => setError((reason as Error).message));
   }, [selected]);
   return (
     <DashboardWorkspace active="leaderboards">
@@ -1677,13 +2391,29 @@ function LeaderboardsPage() {
           {sessions.map((session) => (
             <option key={session.id} value={session.id}>
               {session.quiz?.title} ·{" "}
-              {new Date(session.createdAt).toLocaleDateString("vi-VN")}
+              {new Date(session.createdAt).toLocaleDateString(
+                locale === "vi" ? "vi-VN" : "en-US",
+              )}
             </option>
           ))}
         </select>
       </div>
+      <ErrorBox error={error} />
       <section className="dashboard-section ranking-page">
-        <Leaderboard entries={board} />
+        {loading ? (
+          <div className="loader">{tr("Đang tải...", "Loading...")}</div>
+        ) : sessions.length ? (
+          <Leaderboard entries={board} />
+        ) : (
+          <Empty
+            icon={<Trophy />}
+            title={tr("Chưa có phiên chơi", "No game sessions yet")}
+            text={tr(
+              "Tổ chức một quiz để tạo bảng xếp hạng.",
+              "Host a quiz to create a leaderboard.",
+            )}
+          />
+        )}
       </section>
     </DashboardWorkspace>
   );
@@ -1694,32 +2424,64 @@ function SettingsPage() {
   const toast = useToast();
   const [form, setForm] = useState({
     displayName: "",
+    username: "",
     email: "",
+    currentPassword: "",
     password: "",
+    confirmPassword: "",
   });
   const [saving, setSaving] = useState(false);
   useEffect(() => {
-    void request<{ displayName: string; email: string }>("/auth/me", {
-      token: hostToken(),
-    }).then((user) => setForm({ ...user, password: "" }));
+    void request<{ displayName: string; username?: string; email: string }>(
+      "/auth/me",
+      {
+        token: hostToken(),
+      },
+    )
+      .then((user) =>
+        setForm({
+          ...user,
+          username: user.username || user.email.split("@")[0] || "host",
+          currentPassword: "",
+          password: "",
+          confirmPassword: "",
+        }),
+      )
+      .catch((error) => toast.show((error as Error).message));
   }, []);
   async function save(event: FormEvent) {
     event.preventDefault();
+    if (form.password !== form.confirmPassword) {
+      toast.show(
+        tr("Mật khẩu xác nhận không khớp.", "Passwords do not match."),
+      );
+      return;
+    }
     setSaving(true);
     try {
-      const user = await request<{ displayName: string; email: string }>(
-        "/auth/me",
-        {
-          method: "PUT",
-          token: hostToken(),
-          body: JSON.stringify({
-            displayName: form.displayName,
-            password: form.password,
-          }),
-        },
-      );
+      const user = await request<{
+        displayName: string;
+        username: string;
+        email: string;
+      }>("/auth/me", {
+        method: "PUT",
+        token: hostToken(),
+        body: JSON.stringify({
+          displayName: form.displayName,
+          username: form.username,
+          currentPassword: form.currentPassword,
+          password: form.password,
+          confirmPassword: form.confirmPassword,
+        }),
+      });
       localStorage.setItem("rr_user", JSON.stringify(user));
-      setForm({ ...form, password: "" });
+      setForm({
+        ...form,
+        ...user,
+        currentPassword: "",
+        password: "",
+        confirmPassword: "",
+      });
       toast.show(tr("Đã lưu cài đặt tài khoản.", "Account settings saved."));
     } catch (error) {
       toast.show((error as Error).message);
@@ -1755,8 +2517,42 @@ function SettingsPage() {
             />
           </label>
           <label>
+            {tr("Tên đăng nhập", "Username")}
+            <input
+              value={form.username}
+              onChange={(event) =>
+                setForm({
+                  ...form,
+                  username: event.target.value
+                    .toLowerCase()
+                    .replace(/[^a-z0-9._-]/g, ""),
+                })
+              }
+              required
+              minLength={3}
+              maxLength={30}
+            />
+          </label>
+          <label>
             Email
             <input value={form.email} disabled />
+          </label>
+          <label>
+            {tr("Mật khẩu hiện tại", "Current password")}{" "}
+            <small>
+              {tr(
+                "Chỉ cần nhập khi đổi mật khẩu",
+                "Required only when changing password",
+              )}
+            </small>
+            <input
+              type="password"
+              value={form.currentPassword}
+              onChange={(event) =>
+                setForm({ ...form, currentPassword: event.target.value })
+              }
+              required={Boolean(form.password)}
+            />
           </label>
           <label>
             {tr("Mật khẩu mới", "New password")}{" "}
@@ -1773,6 +2569,18 @@ function SettingsPage() {
               onChange={(e) => setForm({ ...form, password: e.target.value })}
             />
           </label>
+          <label>
+            {tr("Xác nhận mật khẩu mới", "Confirm new password")}
+            <input
+              type="password"
+              minLength={8}
+              value={form.confirmPassword}
+              onChange={(event) =>
+                setForm({ ...form, confirmPassword: event.target.value })
+              }
+              required={Boolean(form.password)}
+            />
+          </label>
           <button className="button button-primary" disabled={saving}>
             <Save />
             {saving
@@ -1787,13 +2595,16 @@ function SettingsPage() {
 }
 
 function AiCreatePage() {
-  const { tr } = usePreferences();
+  const { tr, locale } = usePreferences();
   const nav = useNavigate();
+  const [source, setSource] = useState<"SUBJECT" | "PDF">("SUBJECT");
   const [form, setForm] = useState({
     subject: "",
     title: "",
     category: "Education",
     questionCount: 5,
+    language: locale,
+    difficulty: "MEDIUM",
   });
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -1903,14 +2714,25 @@ function AiCreatePage() {
           <section className="generator-card">
             <form onSubmit={generate}>
               <div className="source-tabs">
-                <span className={!file ? "active" : ""}>
+                <button
+                  type="button"
+                  className={source === "SUBJECT" ? "active" : ""}
+                  onClick={() => {
+                    setSource("SUBJECT");
+                    setFile(null);
+                  }}
+                >
                   <WandSparkles />
                   {tr("Chủ đề", "Subject")}
-                </span>
-                <span className={file ? "active" : ""}>
+                </button>
+                <button
+                  type="button"
+                  className={source === "PDF" ? "active" : ""}
+                  onClick={() => setSource("PDF")}
+                >
                   <BookOpen />
                   PDF
-                </span>
+                </button>
               </div>
               <div
                 className={cx(
@@ -1952,38 +2774,41 @@ function AiCreatePage() {
                 </div>
                 <i />
               </div>
-              <label>
-                {tr("Chủ đề", "Subject")}
-                <input
-                  value={form.subject}
-                  onChange={(e) =>
-                    setForm({ ...form, subject: e.target.value })
-                  }
-                  placeholder={tr(
-                    "Ví dụ: Redis và bảng xếp hạng",
-                    "Example: Redis and leaderboards",
-                  )}
-                />
-              </label>
-              <label className="pdf-drop">
-                <input
-                  type="file"
-                  accept="application/pdf"
-                  onChange={(e) => setFile(e.target.files?.[0] || null)}
-                />
-                <BookOpen />
-                <b>
-                  {file
-                    ? file.name
-                    : tr("Thả hoặc chọn tệp PDF", "Drop or choose a PDF")}
-                </b>
-                <span>
-                  {tr(
-                    "Tối đa 10 MB · PDF có văn bản",
-                    "Up to 10 MB · text-based PDF",
-                  )}
-                </span>
-              </label>
+              {source === "SUBJECT" ? (
+                <label>
+                  {tr("Chủ đề", "Subject")}
+                  <input
+                    value={form.subject}
+                    onChange={(e) =>
+                      setForm({ ...form, subject: e.target.value })
+                    }
+                    placeholder={tr(
+                      "Ví dụ: Redis và bảng xếp hạng",
+                      "Example: Redis and leaderboards",
+                    )}
+                  />
+                </label>
+              ) : (
+                <label className="pdf-drop">
+                  <input
+                    type="file"
+                    accept="application/pdf"
+                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                  />
+                  <BookOpen />
+                  <b>
+                    {file
+                      ? file.name
+                      : tr("Thả hoặc chọn tệp PDF", "Drop or choose a PDF")}
+                  </b>
+                  <span>
+                    {tr(
+                      "Tối đa 10 MB · PDF có văn bản",
+                      "Up to 10 MB · text-based PDF",
+                    )}
+                  </span>
+                </label>
+              )}
               <div className="form-grid">
                 <label>
                   {tr("Tên quiz", "Quiz name")}
@@ -2024,14 +2849,48 @@ function AiCreatePage() {
                   }
                 >
                   {categories.map((category) => (
-                    <option key={category.name}>{category.name}</option>
+                    <option key={category.name} value={category.name}>
+                      {contentLabel(category.name, tr)}
+                    </option>
                   ))}
                 </select>
               </label>
+              <div className="form-grid">
+                <label>
+                  {tr("Ngôn ngữ câu hỏi", "Question language")}
+                  <select
+                    value={form.language}
+                    onChange={(event) =>
+                      setForm({
+                        ...form,
+                        language: event.target.value as "vi" | "en",
+                      })
+                    }
+                  >
+                    <option value="vi">Tiếng Việt</option>
+                    <option value="en">English</option>
+                  </select>
+                </label>
+                <label>
+                  {tr("Độ khó", "Difficulty")}
+                  <select
+                    value={form.difficulty}
+                    onChange={(event) =>
+                      setForm({ ...form, difficulty: event.target.value })
+                    }
+                  >
+                    <option value="EASY">{tr("Dễ", "Easy")}</option>
+                    <option value="MEDIUM">{tr("Trung bình", "Medium")}</option>
+                    <option value="HARD">{tr("Khó", "Hard")}</option>
+                  </select>
+                </label>
+              </div>
               <ErrorBox error={error} />
               <button
                 className="button button-primary button-lg button-block"
-                disabled={busy || (!form.subject.trim() && !file)}
+                disabled={
+                  busy || (source === "SUBJECT" ? !form.subject.trim() : !file)
+                }
               >
                 <WandSparkles />
                 {busy
@@ -2060,11 +2919,13 @@ function Editor() {
   const { id = "" } = useParams();
   const nav = useNavigate();
   const toast = useToast();
+  const askConfirmation = useConfirmation();
   const token = hostToken();
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [selected, setSelected] = useState<number>(0);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState("");
   useEffect(() => {
     request<{ quiz: Quiz; questions: Question[] }>(`/quizzes/${id}?editor=1`, {
       token,
@@ -2073,7 +2934,10 @@ function Editor() {
         setQuiz(d.quiz);
         setQuestions(d.questions);
       })
-      .catch((e) => toast.show(e.message));
+      .catch((e) => {
+        setLoadError(e.message);
+        toast.show(e.message);
+      });
   }, [id]);
   useEffect(() => {
     const notice = sessionStorage.getItem("rr_ai_notice");
@@ -2083,6 +2947,21 @@ function Editor() {
     }
   }, []);
   if (!token) return <Navigate to="/login" />;
+  if (!quiz && loadError)
+    return (
+      <Page>
+        <Empty
+          icon={<CircleHelp />}
+          title={tr("Không thể mở Quiz Editor", "Could not open Quiz Editor")}
+          text={loadError}
+          action={
+            <Link className="button button-secondary" to="/dashboard">
+              <ArrowLeft /> Dashboard
+            </Link>
+          }
+        />
+      </Page>
+    );
   if (!quiz)
     return (
       <div className="full-loader">
@@ -2094,11 +2973,18 @@ function Editor() {
   async function saveQuiz() {
     setSaving(true);
     try {
-      await request(`/quizzes/${quiz!.id}`, {
+      for (const question of questions)
+        await request<Question>(`/questions/${question.id}`, {
+          method: "PUT",
+          token,
+          body: JSON.stringify(question),
+        });
+      const updated = await request<Quiz>(`/quizzes/${quiz!.id}`, {
         method: "PUT",
         token,
         body: JSON.stringify(quiz),
       });
+      setQuiz(updated);
       toast.show(tr("Đã lưu thông tin quiz.", "Quiz details saved."));
     } catch (e) {
       toast.show((e as Error).message);
@@ -2141,11 +3027,42 @@ function Editor() {
     toast.show(tr("Đã lưu câu hỏi.", "Question saved."));
   }
   async function removeQuestion(q: Question) {
-    if (!confirm(tr("Xóa câu hỏi này?", "Delete this question?"))) return;
+    if (
+      !(await askConfirmation(tr("Xóa câu hỏi này?", "Delete this question?"), {
+        title: tr("Xóa câu hỏi", "Delete question"),
+        tone: "danger",
+      }))
+    )
+      return;
     await request(`/questions/${q.id}`, { method: "DELETE", token });
     const next = questions.filter((x) => x.id !== q.id);
     setQuestions(next);
     setSelected(Math.max(0, Math.min(selected, next.length - 1)));
+  }
+  async function moveQuestion(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= questions.length) return;
+    const previous = questions;
+    const next = [...questions];
+    [next[index], next[target]] = [next[target]!, next[index]!];
+    const ordered = next.map((question, order) => ({ ...question, order }));
+    setQuestions(ordered);
+    setSelected(target);
+    try {
+      await Promise.all(
+        ordered.map((question) =>
+          request<Question>(`/questions/${question.id}`, {
+            method: "PUT",
+            token,
+            body: JSON.stringify(question),
+          }),
+        ),
+      );
+    } catch (error) {
+      setQuestions(previous);
+      setSelected(index);
+      toast.show((error as Error).message);
+    }
   }
   return (
     <div className="editor-page">
@@ -2167,6 +3084,12 @@ function Editor() {
           </span>
         </div>
         <div className="editor-header-actions">
+          <button
+            className="button button-secondary"
+            onClick={() => nav(`/quiz/${quiz.id}`)}
+          >
+            <Eye /> {tr("Xem trước", "Preview")}
+          </button>
           <select
             value={quiz.status}
             onChange={(e) =>
@@ -2196,22 +3119,41 @@ function Editor() {
             </button>
           </div>
           {questions.map((q, i) => (
-            <button
-              key={q.id}
-              className={cx("question-thumb", i === selected && "active")}
-              onClick={() => setSelected(i)}
-            >
-              <span>{i + 1}</span>
-              <div>
-                <b>{q.prompt}</b>
-                <small>
-                  {q.type === "TEXT"
-                    ? tr("Nhập văn bản", "Text answer")
-                    : tr("Trắc nghiệm", "Multiple choice")}{" "}
-                  • {q.timeLimitSec}s
-                </small>
-              </div>
-            </button>
+            <div className="question-thumb-wrap" key={q.id}>
+              <button
+                className={cx("question-thumb", i === selected && "active")}
+                onClick={() => setSelected(i)}
+              >
+                <span>{i + 1}</span>
+                <div>
+                  <b>{q.prompt}</b>
+                  <small>
+                    {q.type === "TEXT"
+                      ? tr("Nhập văn bản", "Text answer")
+                      : tr("Trắc nghiệm", "Multiple choice")}{" "}
+                    • {q.timeLimitSec}s
+                  </small>
+                </div>
+              </button>
+              <span className="question-order-actions">
+                <button
+                  type="button"
+                  disabled={i === 0}
+                  onClick={() => void moveQuestion(i, -1)}
+                  aria-label={tr("Đưa câu hỏi lên", "Move question up")}
+                >
+                  <ArrowUp />
+                </button>
+                <button
+                  type="button"
+                  disabled={i === questions.length - 1}
+                  onClick={() => void moveQuestion(i, 1)}
+                  aria-label={tr("Đưa câu hỏi xuống", "Move question down")}
+                >
+                  <ArrowDown />
+                </button>
+              </span>
+            </div>
           ))}
           <button className="add-question" onClick={() => void addQuestion()}>
             <Plus />
@@ -2269,7 +3211,9 @@ function Editor() {
               onChange={(e) => setQuiz({ ...quiz, category: e.target.value })}
             >
               {categories.map((c) => (
-                <option key={c.name}>{c.name}</option>
+                <option key={c.name} value={c.name}>
+                  {contentLabel(c.name, tr)}
+                </option>
               ))}
             </select>
           </label>
@@ -2308,6 +3252,16 @@ function Editor() {
               setQuiz({
                 ...quiz,
                 settings: { ...quiz.settings, showLeaderboard: v },
+              })
+            }
+          />
+          <Toggle
+            label={tr("Điểm theo tốc độ", "Speed scoring")}
+            value={quiz.settings.speedScoring}
+            onChange={(value) =>
+              setQuiz({
+                ...quiz,
+                settings: { ...quiz.settings, speedScoring: value },
               })
             }
           />
@@ -2383,14 +3337,51 @@ function QuestionForm({
       ],
     });
   }
+  function changeType(type: Question["type"]) {
+    if (type === "TRUE_FALSE") {
+      const truth = { id: crypto.randomUUID(), text: tr("Đúng", "True") };
+      const falsity = { id: crypto.randomUUID(), text: tr("Sai", "False") };
+      onChange({
+        ...q,
+        type,
+        options: [truth, falsity],
+        correctOptionId: truth.id,
+        acceptedAnswers: [],
+      });
+      return;
+    }
+    if (type === "TEXT") {
+      onChange({
+        ...q,
+        type,
+        options: [],
+        correctOptionId: "",
+      });
+      return;
+    }
+    const options =
+      q.options.length >= 2
+        ? q.options
+        : [
+            { id: crypto.randomUUID(), text: tr("Đáp án A", "Answer A") },
+            { id: crypto.randomUUID(), text: tr("Đáp án B", "Answer B") },
+          ];
+    onChange({
+      ...q,
+      type,
+      options,
+      correctOptionId: options.some((option) => option.id === q.correctOptionId)
+        ? q.correctOptionId
+        : options[0]!.id,
+      acceptedAnswers: [],
+    });
+  }
   return (
     <div className="question-form">
       <div className="question-toolbar">
         <select
           value={q.type}
-          onChange={(e) =>
-            onChange({ ...q, type: e.target.value as Question["type"] })
-          }
+          onChange={(e) => changeType(e.target.value as Question["type"])}
         >
           <option value="SINGLE_CHOICE">
             {tr("Trắc nghiệm", "Multiple choice")}
@@ -2481,12 +3472,17 @@ function QuestionForm({
               {q.options.length > 2 && (
                 <button
                   className="icon-button"
-                  onClick={() =>
+                  onClick={() => {
+                    const options = q.options.filter((x) => x.id !== o.id);
                     onChange({
                       ...q,
-                      options: q.options.filter((x) => x.id !== o.id),
-                    })
-                  }
+                      options,
+                      correctOptionId:
+                        q.correctOptionId === o.id
+                          ? options[0]?.id || ""
+                          : q.correctOptionId,
+                    });
+                  }}
                 >
                   <X />
                 </button>
@@ -2527,17 +3523,17 @@ function QuestionForm({
 function Join() {
   const { pin: routePin } = useParams();
   const nav = useNavigate();
-  const { locale, setLocale, t } = usePreferences();
+  const { locale, tr, t } = usePreferences();
   const [pin, setPin] = useState(routePin || "");
   const [info, setInfo] = useState<any>(null);
   const [form, setForm] = useState({
     nickname: "",
-    avatar: "rocket",
-    country: "VN",
+    avatar: defaultAvatar,
     team: "",
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [diceRoll, setDiceRoll] = useState(0);
   useEffect(() => {
     if (routePin) void lookup();
   }, [routePin]);
@@ -2614,71 +3610,67 @@ function Join() {
             ) : (
               <>
                 <label>
-                  {t("nickname")}
-                  <input
-                    value={form.nickname}
-                    onChange={(e) =>
-                      setForm({ ...form, nickname: e.target.value })
-                    }
-                    placeholder={t("yourName")}
-                    maxLength={24}
-                    required
-                  />
+                  <span>{t("nickname")}</span>
+                  <div className="nickname-input-row">
+                    <input
+                      value={form.nickname}
+                      onChange={(e) =>
+                        setForm({ ...form, nickname: e.target.value })
+                      }
+                      placeholder={t("yourName")}
+                      maxLength={24}
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="nickname-random-button"
+                      title={tr(
+                        "Tạo biệt danh ngẫu nhiên",
+                        "Randomize nickname",
+                      )}
+                      aria-label={tr(
+                        "Tạo biệt danh ngẫu nhiên",
+                        "Randomize nickname",
+                      )}
+                      onClick={() => {
+                        setForm({
+                          ...form,
+                          nickname: randomNickname(locale, form.nickname),
+                        });
+                        setDiceRoll((current) => current + 1);
+                      }}
+                    >
+                      <Dices key={diceRoll} />
+                    </button>
+                  </div>
                 </label>
                 <label>
                   {t("chooseAvatar")}
-                  <div className="avatar-picker">
-                    {avatars.map((a) => (
-                      <button
-                        type="button"
-                        key={a}
-                        className={form.avatar === a ? "active" : ""}
-                        onClick={() => setForm({ ...form, avatar: a })}
-                      >
-                        {avatarEmoji[a]}
-                      </button>
-                    ))}
-                  </div>
+                  <AvatarCustomizer
+                    value={form.avatar}
+                    onChange={(avatar) => setForm({ ...form, avatar })}
+                    labels={{
+                      skin: tr("Màu da", "Skin"),
+                      hair: tr("Tóc", "Hair"),
+                      shirt: tr("Trang phục", "Outfit"),
+                      accessory: tr("Phụ kiện", "Accessory"),
+                      none: tr("Không", "None"),
+                    }}
+                  />
                 </label>
-                <div className="form-grid">
+                {info.session?.settings.teamMode && (
                   <label>
-                    {t("country")}
-                    <select
-                      value={form.country}
-                      onChange={(e) => {
-                        const country = e.target.value;
-                        setForm({ ...form, country });
-                        setLocale(country === "VN" ? "vi" : "en");
-                      }}
-                    >
-                      <option value="VN">
-                        🇻🇳 {locale === "vi" ? "Việt Nam" : "Vietnam"}
-                      </option>
-                      <option value="US">
-                        🇺🇸 {locale === "vi" ? "Hoa Kỳ" : "United States"}
-                      </option>
-                      <option value="JP">
-                        🇯🇵 {locale === "vi" ? "Nhật Bản" : "Japan"}
-                      </option>
-                      <option value="KR">
-                        🇰🇷 {locale === "vi" ? "Hàn Quốc" : "South Korea"}
-                      </option>
-                    </select>
+                    {t("team")}
+                    <input
+                      value={form.team}
+                      onChange={(e) =>
+                        setForm({ ...form, team: e.target.value })
+                      }
+                      placeholder={t("teamName")}
+                      required
+                    />
                   </label>
-                  {info.session?.settings.teamMode && (
-                    <label>
-                      {t("team")}
-                      <input
-                        value={form.team}
-                        onChange={(e) =>
-                          setForm({ ...form, team: e.target.value })
-                        }
-                        placeholder={t("teamName")}
-                        required
-                      />
-                    </label>
-                  )}
-                </div>
+                )}
               </>
             )}
             <ErrorBox error={error} />
@@ -2722,8 +3714,10 @@ function useGameSocket(
     for (const name of [
       "lobby:updated",
       "session:started",
+      "question:preview",
       "question:shown",
       "question:revealed",
+      "session:updated",
       "leaderboard:updated",
       "answer:accepted",
       "host:progress",
@@ -2747,11 +3741,15 @@ function Countdown({
 }) {
   const [left, setLeft] = useState(seconds);
   useEffect(() => {
+    let notified = false;
     const tick = () => {
       const elapsed = (Date.now() - new Date(startedAt).getTime()) / 1000;
       const n = Math.max(0, Math.ceil(seconds - elapsed));
       setLeft(n);
-      if (n === 0) onExpire?.();
+      if (n === 0 && !notified) {
+        notified = true;
+        onExpire?.();
+      }
     };
     tick();
     const t = setInterval(tick, 250);
@@ -2769,10 +3767,257 @@ function Countdown({
   );
 }
 
+function StartCountdown({ startedAt }: { startedAt: string }) {
+  const { tr } = usePreferences();
+  const [stage, setStage] = useState(0);
+  useEffect(() => {
+    const tick = () =>
+      setStage(
+        Math.min(
+          3,
+          Math.max(
+            0,
+            Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000),
+          ),
+        ),
+      );
+    tick();
+    const timer = window.setInterval(tick, 100);
+    return () => window.clearInterval(timer);
+  }, [startedAt]);
+  const labels = ["3", "2", "1", tr("Bắt đầu!", "Go!")];
+  return (
+    <div
+      className="start-countdown-overlay"
+      role="status"
+      aria-live="assertive"
+    >
+      <div key={stage} className="start-countdown-value">
+        {labels[stage]}
+      </div>
+      <span>{tr("Sẵn sàng cho cuộc đua", "Get ready for the race")}</span>
+    </div>
+  );
+}
+
+const musicTracks = [
+  {
+    name: "Mây Trôi",
+    bpm: 76,
+    wave: "sine",
+    notes: [261.63, 329.63, 392, 329.63],
+  },
+  {
+    name: "Biển Sáng",
+    bpm: 82,
+    wave: "sine",
+    notes: [293.66, 369.99, 440, 369.99],
+  },
+  {
+    name: "Gió Nhẹ",
+    bpm: 72,
+    wave: "triangle",
+    notes: [220, 277.18, 329.63, 277.18],
+  },
+  {
+    name: "Bình Minh",
+    bpm: 88,
+    wave: "triangle",
+    notes: [261.63, 392, 329.63, 440],
+  },
+  {
+    name: "Mưa Êm",
+    bpm: 68,
+    wave: "sine",
+    notes: [196, 246.94, 293.66, 246.94],
+  },
+  {
+    name: "Đồi Xanh",
+    bpm: 80,
+    wave: "sine",
+    notes: [246.94, 311.13, 369.99, 311.13],
+  },
+  {
+    name: "Sao Khuya",
+    bpm: 70,
+    wave: "triangle",
+    notes: [174.61, 220, 261.63, 220],
+  },
+  {
+    name: "Dòng Sông",
+    bpm: 84,
+    wave: "sine",
+    notes: [233.08, 293.66, 349.23, 293.66],
+  },
+  {
+    name: "Thư Viện",
+    bpm: 64,
+    wave: "triangle",
+    notes: [207.65, 261.63, 311.13, 261.63],
+  },
+  {
+    name: "Khoảng Trời",
+    bpm: 90,
+    wave: "sine",
+    notes: [329.63, 415.3, 493.88, 415.3],
+  },
+  {
+    name: "Lá Non",
+    bpm: 78,
+    wave: "triangle",
+    notes: [277.18, 349.23, 415.3, 349.23],
+  },
+  {
+    name: "Hoàng Hôn",
+    bpm: 74,
+    wave: "sine",
+    notes: [196, 293.66, 246.94, 329.63],
+  },
+  {
+    name: "Cà Phê Sớm",
+    bpm: 86,
+    wave: "triangle",
+    notes: [261.63, 329.63, 440, 392],
+  },
+  {
+    name: "Tĩnh Lặng",
+    bpm: 60,
+    wave: "sine",
+    notes: [164.81, 207.65, 246.94, 207.65],
+  },
+  {
+    name: "Chuyến Đi",
+    bpm: 92,
+    wave: "triangle",
+    notes: [293.66, 440, 369.99, 493.88],
+  },
+] as const;
+
+function PlayerMusic({ disabled = false }: { disabled?: boolean }) {
+  const { tr } = usePreferences();
+  const [open, setOpen] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [trackIndex, setTrackIndex] = useState(() =>
+    Math.min(
+      14,
+      Math.max(0, Number(localStorage.getItem("rr_music_track") || 0)),
+    ),
+  );
+  const [volume, setVolume] = useState(() =>
+    Number(localStorage.getItem("rr_music_volume") || 28),
+  );
+  const audio = useRef<{ context: AudioContext; timer: number } | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem("rr_music_track", String(trackIndex));
+    localStorage.setItem("rr_music_volume", String(volume));
+  }, [trackIndex, volume]);
+
+  useEffect(() => {
+    if (!playing || disabled || volume === 0) return;
+    const context = new AudioContext();
+    const track = musicTracks[trackIndex] || musicTracks[0];
+    let noteIndex = 0;
+    const playNote = () => {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = track.wave;
+      oscillator.frequency.value = track.notes[noteIndex % track.notes.length]!;
+      const now = context.currentTime;
+      const peak = Math.max(0.001, (volume / 100) * 0.055);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.exponentialRampToValueAtTime(peak, now + 0.08);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 1.1);
+      oscillator.connect(gain).connect(context.destination);
+      oscillator.start(now);
+      oscillator.stop(now + 1.15);
+      noteIndex += 1;
+    };
+    playNote();
+    const timer = window.setInterval(playNote, 60_000 / track.bpm);
+    audio.current = { context, timer };
+    return () => {
+      window.clearInterval(timer);
+      void context.close();
+      audio.current = null;
+    };
+  }, [playing, disabled, trackIndex, volume]);
+
+  return (
+    <div className="player-music">
+      <button
+        type="button"
+        className={cx("music-toggle", playing && !disabled && "active")}
+        onClick={() => setOpen((value) => !value)}
+        title={tr("Nhạc nền", "Background music")}
+      >
+        <Music2 />
+      </button>
+      {open && (
+        <div className="music-panel">
+          <div className="music-panel-head">
+            <span>
+              <Music2 />
+              <b>{tr("Nhạc nền tập trung", "Focus music")}</b>
+            </span>
+            <button type="button" onClick={() => setOpen(false)}>
+              <X />
+            </button>
+          </div>
+          <label>
+            {tr("Chọn bài nhạc", "Choose a track")}
+            <select
+              value={trackIndex}
+              onChange={(event) => setTrackIndex(Number(event.target.value))}
+            >
+              {musicTracks.map((track, index) => (
+                <option value={index} key={track.name}>
+                  {index + 1}. {track.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="music-volume">
+            <span>
+              <Volume2 /> {tr("Âm lượng", "Volume")} <b>{volume}%</b>
+            </span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={volume}
+              onChange={(event) => setVolume(Number(event.target.value))}
+            />
+          </label>
+          <button
+            type="button"
+            className="button button-primary button-block"
+            disabled={disabled}
+            onClick={() => setPlaying((value) => !value)}
+          >
+            {playing ? <Pause /> : <Play />}
+            {playing
+              ? tr("Tạm dừng nhạc", "Pause music")
+              : tr("Phát nhạc", "Play music")}
+          </button>
+          {disabled && (
+            <small>
+              {tr(
+                "Host đang tắt âm thanh thiết bị.",
+                "The host muted player devices.",
+              )}
+            </small>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PlayerGame() {
   const { id = "" } = useParams();
   const nav = useNavigate();
-  const { t } = usePreferences();
+  const { t, tr } = usePreferences();
   const token = playerToken(id);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [selected, setSelected] = useState("");
@@ -2782,6 +4027,15 @@ function PlayerGame() {
   const [busy, setBusy] = useState(false);
   const [expired, setExpired] = useState(false);
   const [finalResult, setFinalResult] = useState<PlayerResult | null>(null);
+  const runWithoutLeavePrompt = useRoomLeaveGuard(
+    Boolean(
+      snapshot && !["ENDED", "CANCELLED"].includes(snapshot.session.state),
+    ),
+    tr(
+      "Bạn đang tham gia một phòng chơi. Nếu rời trang, bạn có thể bỏ lỡ câu hỏi hiện tại. Bạn có chắc muốn rời đi?",
+      "You are currently playing in a room. Leaving may cause you to miss the current question. Are you sure you want to leave?",
+    ),
+  );
   const meta = useMemo(() => {
     try {
       return JSON.parse(
@@ -2808,19 +4062,27 @@ function PlayerGame() {
       .catch((e) => setError((e as Error).message));
   }, [id, snapshot?.session.state, token]);
   useEffect(() => {
-    if (!result || snapshot?.session.settings.mutePlayers) return;
+    if (!reveal || !selected || snapshot?.session.settings.mutePlayers) return;
     const AudioContextClass = window.AudioContext;
     const context = new AudioContextClass();
     const oscillator = context.createOscillator();
     const gain = context.createGain();
-    oscillator.frequency.value = result.correct ? 660 : 190;
+    const correct =
+      snapshot?.currentQuestion?.type === "TEXT"
+        ? reveal.acceptedAnswers?.some(
+            (answer: string) =>
+              answer.trim().toLocaleLowerCase("vi-VN") ===
+              selected.trim().toLocaleLowerCase("vi-VN"),
+          )
+        : selected === reveal.correctOptionId;
+    oscillator.frequency.value = correct ? 660 : 190;
     gain.gain.setValueAtTime(0.08, context.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.18);
     oscillator.connect(gain).connect(context.destination);
     oscillator.start();
     oscillator.stop(context.currentTime + 0.18);
     oscillator.addEventListener("ended", () => void context.close());
-  }, [result, snapshot?.session.settings.mutePlayers]);
+  }, [reveal, selected, snapshot?.session.settings.mutePlayers]);
   useGameSocket(
     id,
     token,
@@ -2829,12 +4091,14 @@ function PlayerGame() {
       if (
         name === "lobby:updated" ||
         name === "session:started" ||
+        name === "question:preview" ||
         name === "question:shown" ||
+        name === "session:updated" ||
         name === "session:ended"
       ) {
         if (data?.session) setSnapshot(data);
         else void load();
-        if (name === "question:shown" || name === "session:started") {
+        if (name === "question:preview" || name === "session:started") {
           setSelected("");
           setResult(null);
           setReveal(null);
@@ -2842,8 +4106,13 @@ function PlayerGame() {
         }
       }
       if (name === "question:revealed") {
-        setReveal(data);
-        void load();
+        if (data?.session) {
+          setSnapshot(data);
+          setReveal(data.revealedQuestion);
+        } else {
+          setReveal(data);
+          void load();
+        }
       }
       if (name === "leaderboard:updated")
         setSnapshot((s) => (s ? { ...s, ...data } : s));
@@ -2851,7 +4120,7 @@ function PlayerGame() {
       if (name === "player:kicked") {
         sessionStorage.removeItem(`rr_player_${id}`);
         sessionStorage.removeItem(`rr_player_meta_${id}`);
-        nav("/join");
+        runWithoutLeavePrompt(() => nav("/join"));
       }
     },
   );
@@ -2891,6 +4160,23 @@ function PlayerGame() {
     }
   }
   const self = snapshot.selfRank;
+  const phase =
+    snapshot.session.state === "PAUSED"
+      ? snapshot.session.pausedState
+      : snapshot.session.state;
+  const activeReveal = reveal || snapshot.revealedQuestion;
+  const isLastQuestion =
+    snapshot.session.currentQuestionIndex ===
+    snapshot.session.questionOrder.length - 1;
+  const selectedIsCorrect = activeReveal
+    ? snapshot.currentQuestion?.type === "TEXT"
+      ? activeReveal.acceptedAnswers.some(
+          (answer: string) =>
+            answer.trim().toLocaleLowerCase("vi-VN") ===
+            selected.trim().toLocaleLowerCase("vi-VN"),
+        )
+      : selected === activeReveal.correctOptionId
+    : false;
   return (
     <main className="game-page">
       <div className="game-top">
@@ -2902,20 +4188,42 @@ function PlayerGame() {
           <div>
             <i
               style={{
-                width: `${Math.min(100, (snapshot.session.currentQuestionIndex + 1) * 10)}%`,
+                width: `${Math.min(
+                  100,
+                  ((snapshot.session.currentQuestionIndex + 1) /
+                    Math.max(1, snapshot.session.questionOrder.length)) *
+                    100,
+                )}%`,
               }}
             />
           </div>
         </div>
         <div className="player-chip">
-          <span>{avatarEmoji[meta.avatar] || "🚀"}</span>
+          <PlayerAvatar value={meta.avatar} size={34} />
           <b>{meta.nickname || t("player")}</b>
           <strong>{self?.score || 0}</strong>
         </div>
+        <PlayerMusic
+          disabled={
+            snapshot.session.settings.mutePlayers ||
+            snapshot.session.state === "ENDED" ||
+            snapshot.session.state === "CANCELLED"
+          }
+        />
         <PreferenceControls compact />
       </div>
       {snapshot.session.state === "LOBBY" ? (
         <LobbyPlayer snapshot={snapshot} meta={meta} />
+      ) : snapshot.session.state === "GAME_COUNTDOWN" ? (
+        <StartCountdown startedAt={snapshot.session.questionStartedAt} />
+      ) : snapshot.session.state === "CANCELLED" ? (
+        <div className="final-player">
+          <X />
+          <h1>{t("sessionCancelled")}</h1>
+          <Link className="button button-primary" to="/join">
+            <Gamepad2 /> {t("playAnother")}
+          </Link>
+        </div>
       ) : snapshot.session.state === "ENDED" ? (
         <FinalPlayer snapshot={snapshot} meta={meta} result={finalResult} />
       ) : (
@@ -2923,18 +4231,89 @@ function PlayerGame() {
           <section className="question-stage">
             {snapshot.currentQuestion && (
               <>
-                <Countdown
-                  startedAt={snapshot.session.questionStartedAt}
-                  seconds={snapshot.currentQuestion.timeLimitSec}
-                  onExpire={() => setExpired(true)}
-                />
+                {snapshot.session.state !== "PAUSED" && (
+                  <Countdown
+                    startedAt={snapshot.session.questionStartedAt}
+                    seconds={
+                      phase === "RUNNING"
+                        ? snapshot.currentQuestion.timeLimitSec
+                        : 5
+                    }
+                    onExpire={
+                      phase === "RUNNING" ? () => setExpired(true) : undefined
+                    }
+                  />
+                )}
                 <span className="question-label">
                   {t("questionUpper")}{" "}
                   {snapshot.session.currentQuestionIndex + 1}
                 </span>
+                {isLastQuestion && (
+                  <span className="double-points-badge">
+                    <Zap />{" "}
+                    {tr(
+                      "Câu cuối • Nhân đôi điểm",
+                      "Final question • Double points",
+                    )}
+                  </span>
+                )}
                 <h1>{snapshot.currentQuestion.prompt}</h1>
-                {snapshot.currentQuestion.type === "TEXT" ? (
+                {snapshot.session.state === "PAUSED" ? (
+                  <div className="phase-banner paused">
+                    <Pause />
+                    <div>
+                      <b>{tr("Trò chơi đang tạm dừng", "Game paused")}</b>
+                      <span>
+                        {tr(
+                          "Host sẽ tiếp tục khi mọi người sẵn sàng.",
+                          "The host will resume when everyone is ready.",
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                ) : phase === "QUESTION_PREVIEW" ? (
+                  <div className="preview-content">
+                    <div className="phase-banner">
+                      <Clock3 />
+                      <div>
+                        <b>
+                          {tr(
+                            "Các đáp án đang xuất hiện",
+                            "Answer choices are appearing",
+                          )}
+                        </b>
+                        <span>
+                          {tr(
+                            "Quan sát kỹ — bạn có thể chọn khi đồng hồ trả lời bắt đầu.",
+                            "Watch closely — you can choose when the answer timer starts.",
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                    {snapshot.currentQuestion.type !== "TEXT" && (
+                      <div className="answer-grid preview-options">
+                        {snapshot.currentQuestion.options.map(
+                          (option, index) => (
+                            <button
+                              type="button"
+                              disabled
+                              className="answer-option preview-sequence"
+                              style={{ animationDelay: `${index * 0.9}s` }}
+                              key={option.id}
+                            >
+                              <span>
+                                {["▲", "◆", "●", "■", "★", "⬟"][index]}
+                              </span>
+                              {option.text}
+                            </button>
+                          ),
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : snapshot.currentQuestion.type === "TEXT" ? (
                   <TextAnswer
+                    key={snapshot.currentQuestion.id}
                     disabled={
                       expired ||
                       !!result ||
@@ -2955,12 +4334,12 @@ function PlayerGame() {
                         className={cx(
                           "answer-option",
                           selected === o.id && "selected",
-                          reveal &&
-                            o.id === reveal.correctOptionId &&
+                          activeReveal &&
+                            o.id === activeReveal.correctOptionId &&
                             "correct",
-                          reveal &&
+                          activeReveal &&
                             selected === o.id &&
-                            o.id !== reveal.correctOptionId &&
+                            o.id !== activeReveal.correctOptionId &&
                             "wrong",
                         )}
                         onClick={() => void answer(o.id)}
@@ -2976,49 +4355,86 @@ function PlayerGame() {
                 {expired && !result && (
                   <div className="waiting-host">{t("timeUp")}</div>
                 )}
-                {result && (
-                  <div
-                    className={cx(
-                      "answer-result",
-                      result.correct ? "correct" : "wrong",
-                    )}
-                  >
-                    <span>{result.correct ? "✓" : "×"}</span>
+                {result && phase === "RUNNING" && (
+                  <div className="answer-result recorded">
+                    <span>
+                      <Check />
+                    </span>
                     <div>
-                      <b>{result.correct ? t("correct") : t("incorrect")}</b>
+                      <b>{tr("Đã ghi nhận đáp án", "Answer recorded")}</b>
                       <p>
-                        {result.created
-                          ? `+${result.awardedPoints} ${t("points")} • ${t("rank")} #${result.rank?.rank}`
-                          : t("alreadyRecorded")}
+                        {tr(
+                          "Chờ những người chơi còn lại…",
+                          "Waiting for the other players…",
+                        )}
                       </p>
                     </div>
                   </div>
                 )}
-                {snapshot.session.state === "QUESTION_RESULT" && (
-                  <div className="waiting-host">{t("revealedWaiting")}</div>
+                {result && phase === "QUESTION_RESULT" && activeReveal && (
+                  <div
+                    className={cx(
+                      "answer-result",
+                      selectedIsCorrect ? "correct" : "wrong",
+                    )}
+                  >
+                    <span>{selectedIsCorrect ? "✓" : "×"}</span>
+                    <div>
+                      <b>{selectedIsCorrect ? t("correct") : t("incorrect")}</b>
+                      <p>
+                        {tr(
+                          "Điểm và thứ hạng đã được cập nhật.",
+                          "Your score and rank have been updated.",
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {phase === "QUESTION_RESULT" && (
+                  <>
+                    {activeReveal && (
+                      <div className="question-explanation">
+                        <Check />
+                        <div>
+                          {snapshot.currentQuestion.type === "TEXT" &&
+                            activeReveal.acceptedAnswers?.[0] && (
+                              <b>
+                                {t("correct")}:{" "}
+                                {activeReveal.acceptedAnswers[0]}
+                              </b>
+                            )}
+                          {activeReveal.explanation && (
+                            <p>{activeReveal.explanation}</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    <div className="waiting-host">{t("revealedWaiting")}</div>
+                  </>
                 )}
               </>
             )}
           </section>
-          {!snapshot.session.settings.hideLeaderboard && (
-            <aside className="live-side">
-              <Leaderboard
-                entries={snapshot.leaderboard}
-                selfId={meta.id}
-                compact
-              />
-              {snapshot.session.settings.teamMode && (
-                <TeamLeaderboard entries={snapshot.teamLeaderboard} />
-              )}
-              <div className="self-rank">
-                <span>{t("yourRank")}</span>
-                <b>#{self?.rank || "–"}</b>
-                <strong>
-                  {self?.score || 0} {t("points")}
-                </strong>
-              </div>
-            </aside>
-          )}
+          {phase === "QUESTION_RESULT" &&
+            !snapshot.session.settings.hideLeaderboard && (
+              <aside className="live-side">
+                <Leaderboard
+                  entries={snapshot.leaderboard}
+                  selfId={meta.id}
+                  compact
+                />
+                {snapshot.session.settings.teamMode && (
+                  <TeamLeaderboard entries={snapshot.teamLeaderboard} />
+                )}
+                <div className="self-rank">
+                  <span>{t("yourRank")}</span>
+                  <b>#{self?.rank || "–"}</b>
+                  <strong>
+                    {self?.score || 0} {t("points")}
+                  </strong>
+                </div>
+              </aside>
+            )}
         </div>
       )}
     </main>
@@ -3032,7 +4448,7 @@ function TextAnswer({
   disabled: boolean;
 }) {
   const [v, setV] = useState("");
-  const { t } = usePreferences();
+  const { t, tr } = usePreferences();
   return (
     <form
       className="text-answer"
@@ -3047,9 +4463,12 @@ function TextAnswer({
         placeholder={t("typeAnswer")}
         disabled={disabled}
       />
-      <button className="button button-primary" disabled={disabled}>
-        {t("sendAnswer")}
-      </button>
+      <small>
+        {tr(
+          "Nhấn Enter để gửi ngay — không có bước xác nhận.",
+          "Press Enter to submit instantly — no confirmation step.",
+        )}
+      </small>
     </form>
   );
 }
@@ -3058,7 +4477,9 @@ function LobbyPlayer({ snapshot, meta }: { snapshot: Snapshot; meta: Player }) {
   return (
     <div className="lobby-player">
       <div className="lobby-orbit">
-        <div className="avatar-big">{avatarEmoji[meta.avatar] || "🚀"}</div>
+        <div className="avatar-big">
+          <PlayerAvatar value={meta.avatar} size={92} />
+        </div>
         <i />
         <i />
         <i />
@@ -3152,7 +4573,7 @@ function Leaderboard({
         <div>
           <Trophy />
           <span>
-            <b>Leaderboard</b>
+            <b>{t("realtimeLeaderboard")}</b>
             <small>{t("realtimeUpdate")}</small>
           </span>
         </div>
@@ -3167,11 +4588,11 @@ function Leaderboard({
             >
               <b className="rank">{i < 3 ? ["🥇", "🥈", "🥉"][i] : e.rank}</b>
               <span className="mini-avatar">
-                {avatarEmoji[e.avatar] || "🚀"}
+                <PlayerAvatar value={e.avatar} size={34} />
               </span>
               <span className="leader-name">
                 <b>{e.nickname}</b>
-                <small>{e.team || e.country}</small>
+                {e.team && <small>{e.team}</small>}
               </span>
               <strong>{e.score.toLocaleString()}</strong>
             </div>
@@ -3222,9 +4643,19 @@ function HostGame() {
   const nav = useNavigate();
   const token = hostToken();
   const toast = useToast();
+  const askConfirmation = useConfirmation();
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [progress, setProgress] = useState({ answered: 0, playerCount: 0 });
   const [revealed, setRevealed] = useState<any>(null);
+  const runWithoutLeavePrompt = useRoomLeaveGuard(
+    Boolean(
+      snapshot && !["ENDED", "CANCELLED"].includes(snapshot.session.state),
+    ),
+    tr(
+      "Bạn đang quản lý một phòng chơi. Rời trang có thể làm gián đoạn quá trình điều khiển game. Bạn có chắc muốn rời đi?",
+      "You are managing an active room. Leaving may interrupt game control. Are you sure you want to leave?",
+    ),
+  );
   const load = useCallback(
     () =>
       request<Snapshot>(`/sessions/${id}`, { token })
@@ -3239,29 +4670,27 @@ function HostGame() {
     if (
       name === "lobby:updated" ||
       name === "session:started" ||
+      name === "question:preview" ||
       name === "question:shown" ||
+      name === "session:updated" ||
       name === "session:ended"
     ) {
       if (data?.session) setSnapshot(data);
       else void load();
-      if (name === "question:shown") {
+      if (name === "question:preview" || name === "question:shown") {
         setRevealed(null);
         setProgress({ answered: 0, playerCount: data.playerCount || 0 });
       }
     }
     if (name === "host:progress") setProgress(data);
     if (name === "question:revealed") {
-      setRevealed(data);
-      setSnapshot((s) =>
-        s
-          ? {
-              ...s,
-              session: { ...s.session, state: "QUESTION_RESULT" },
-              leaderboard: data.leaderboard,
-              teamLeaderboard: data.teamLeaderboard,
-            }
-          : s,
-      );
+      if (data?.session) {
+        setSnapshot(data);
+        setRevealed(data.revealedQuestion);
+      } else {
+        setRevealed(data);
+        void load();
+      }
     }
     if (name === "leaderboard:updated")
       setSnapshot((s) => (s ? { ...s, ...data } : s));
@@ -3282,41 +4711,169 @@ function HostGame() {
       toast.show((e as Error).message);
     }
   }
-  async function advance() {
+  async function pauseOrResume() {
     try {
-      await request(`/sessions/${id}/advance`, { method: "POST", token });
+      const action = snapshot?.session.state === "PAUSED" ? "resume" : "pause";
+      await request(`/sessions/${id}/${action}`, { method: "POST", token });
+    } catch (e) {
+      toast.show((e as Error).message);
+    }
+  }
+  async function skip() {
+    if (
+      !(await askConfirmation(
+        tr("Bỏ qua câu hỏi hiện tại?", "Skip the current question?"),
+        { title: tr("Bỏ qua câu hỏi", "Skip question") },
+      ))
+    )
+      return;
+    try {
+      await request(`/sessions/${id}/skip`, { method: "POST", token });
     } catch (e) {
       toast.show((e as Error).message);
     }
   }
   async function end() {
-    if (!confirm(tr("Kết thúc game ngay bây giờ?", "End the game now?")))
+    if (
+      !(await askConfirmation(
+        tr("Kết thúc game ngay bây giờ?", "End the game now?"),
+        {
+          title: tr("Kết thúc game", "End game"),
+          tone: "danger",
+        },
+      ))
+    )
       return;
-    await request(`/sessions/${id}/end`, { method: "POST", token });
+    try {
+      await request(`/sessions/${id}/end`, { method: "POST", token });
+    } catch (error) {
+      toast.show((error as Error).message);
+    }
   }
+  async function cancel() {
+    if (
+      !(await askConfirmation(tr("Hủy phòng chờ này?", "Cancel this lobby?"), {
+        title: tr("Hủy phòng chờ", "Cancel lobby"),
+        tone: "danger",
+      }))
+    )
+      return;
+    try {
+      await request(`/sessions/${id}/cancel`, { method: "POST", token });
+      runWithoutLeavePrompt(() => nav("/dashboard/reports"));
+    } catch (error) {
+      toast.show((error as Error).message);
+    }
+  }
+  async function replay() {
+    try {
+      const session = await request<{ id: string }>(`/sessions/${id}/replay`, {
+        method: "POST",
+        token,
+      });
+      nav(`/host/${session.id}`);
+    } catch (error) {
+      toast.show((error as Error).message);
+    }
+  }
+  async function toggleFullscreen() {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen();
+    } catch {
+      toast.show(
+        tr(
+          "Trình duyệt không cho phép toàn màn hình.",
+          "Fullscreen is not available.",
+        ),
+      );
+    }
+  }
+  function testSound() {
+    if (snapshot?.session.settings.mutePlayers) {
+      toast.show(tr("Âm thanh người chơi đang tắt.", "Player sound is muted."));
+      return;
+    }
+    const AudioContextClass =
+      window.AudioContext ||
+      (window as typeof window & { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+    if (!AudioContextClass) return;
+    const context = new AudioContextClass();
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.frequency.value = 620;
+    gain.gain.value = 0.05;
+    oscillator.connect(gain).connect(context.destination);
+    oscillator.start();
+    oscillator.stop(context.currentTime + 0.12);
+  }
+  const phase =
+    snapshot.session.state === "PAUSED"
+      ? snapshot.session.pausedState
+      : snapshot.session.state;
+  const activeReveal = revealed || snapshot.revealedQuestion;
+  const isLastQuestion =
+    snapshot.session.currentQuestionIndex ===
+    snapshot.session.questionOrder.length - 1;
   return (
     <main className="host-page">
       <header className="host-bar">
         <Logo />
         <div>
           <span className="live-dot" />
-          HOST CONSOLE
+          {tr("BẢNG ĐIỀU KHIỂN HOST", "HOST CONSOLE")}
         </div>
-        <PreferenceControls compact />
-        <button
-          className="button button-ghost"
-          onClick={() => nav("/dashboard")}
-        >
-          <X />
-          {tr("Thoát", "Exit")}
-        </button>
+        <div className="host-bar-actions">
+          <button
+            className="icon-button"
+            title={tr("Thử âm thanh", "Test sound")}
+            onClick={testSound}
+          >
+            <Volume2 />
+          </button>
+          <button
+            className="icon-button"
+            title={tr("Toàn màn hình", "Fullscreen")}
+            onClick={() => void toggleFullscreen()}
+          >
+            <Maximize2 />
+          </button>
+          <PreferenceControls compact />
+          <button
+            className="button button-ghost"
+            onClick={() => nav("/dashboard")}
+          >
+            <X />
+            {tr("Thoát", "Exit")}
+          </button>
+        </div>
       </header>
       {snapshot.session.state === "LOBBY" ? (
-        <HostLobby snapshot={snapshot} onStart={start} onRefresh={load} />
+        <HostLobby
+          snapshot={snapshot}
+          onStart={start}
+          onCancel={cancel}
+          onRefresh={load}
+        />
+      ) : snapshot.session.state === "GAME_COUNTDOWN" ? (
+        <StartCountdown startedAt={snapshot.session.questionStartedAt} />
+      ) : snapshot.session.state === "CANCELLED" ? (
+        <div className="host-final">
+          <X />
+          <h1>{tr("Phòng đã được hủy", "Lobby cancelled")}</h1>
+          <button
+            className="button button-secondary"
+            onClick={() => nav("/dashboard")}
+          >
+            {tr("Về dashboard", "Back to dashboard")}
+          </button>
+        </div>
       ) : snapshot.session.state === "ENDED" ? (
         <HostFinal
           snapshot={snapshot}
           onReport={() => nav(`/report/${id}`)}
+          onReplay={replay}
           onExit={() => nav("/dashboard")}
         />
       ) : (
@@ -3336,32 +4893,95 @@ function HostGame() {
             </div>
             {snapshot.currentQuestion && (
               <>
-                <Countdown
-                  startedAt={snapshot.session.questionStartedAt}
-                  seconds={snapshot.currentQuestion.timeLimitSec}
-                />
+                {snapshot.session.state !== "PAUSED" && (
+                  <Countdown
+                    startedAt={snapshot.session.questionStartedAt}
+                    seconds={
+                      phase === "RUNNING"
+                        ? snapshot.currentQuestion.timeLimitSec
+                        : 5
+                    }
+                  />
+                )}
                 <span className="question-label">
-                  {tr("CÂU HỎI HIỆN TẠI", "CURRENT QUESTION")}
+                  {phase === "QUESTION_PREVIEW"
+                    ? tr("5 GIÂY ĐỌC CÂU HỎI", "5-SECOND QUESTION PREVIEW")
+                    : phase === "QUESTION_RESULT"
+                      ? tr("BẢNG XẾP HẠNG", "LEADERBOARD BREAK")
+                      : tr("CÂU HỎI HIỆN TẠI", "CURRENT QUESTION")}
                 </span>
+                {isLastQuestion && (
+                  <span className="double-points-badge">
+                    <Zap />{" "}
+                    {tr(
+                      "Câu cuối • Nhân đôi điểm",
+                      "Final question • Double points",
+                    )}
+                  </span>
+                )}
                 <h1>{snapshot.currentQuestion.prompt}</h1>
+                {snapshot.session.state === "PAUSED" && (
+                  <div className="phase-banner paused">
+                    <Pause />
+                    <div>
+                      <b>{tr("Trò chơi đang tạm dừng", "Game paused")}</b>
+                      <span>
+                        {tr(
+                          "Đồng hồ đã được giữ nguyên.",
+                          "The timer is frozen.",
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                )}
+                {phase === "QUESTION_PREVIEW" &&
+                  snapshot.session.state !== "PAUSED" && (
+                    <div className="phase-banner">
+                      <Clock3 />
+                      <div>
+                        <b>
+                          {tr(
+                            "Người chơi đang đọc câu hỏi",
+                            "Players are reading the question",
+                          )}
+                        </b>
+                        <span>
+                          {tr(
+                            "Các lựa chọn đang xuất hiện lần lượt trong 5 giây.",
+                            "Answer choices are appearing one by one over 5 seconds.",
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 <div className="host-options">
                   {snapshot.currentQuestion.options.map((o, i) => (
                     <div
                       className={cx(
-                        revealed &&
-                          o.id === revealed.correctOptionId &&
+                        phase === "QUESTION_PREVIEW" && "preview-sequence",
+                        activeReveal &&
+                          o.id === activeReveal.correctOptionId &&
                           "correct",
                       )}
+                      style={
+                        phase === "QUESTION_PREVIEW"
+                          ? { animationDelay: `${i * 0.9}s` }
+                          : undefined
+                      }
                       key={o.id}
                     >
                       <span>{["▲", "◆", "●", "■", "★", "⬟"][i]}</span>
                       {o.text}
-                      {revealed && o.id === revealed.correctOptionId && (
-                        <Check />
-                      )}
+                      {activeReveal &&
+                        o.id === activeReveal.correctOptionId && <Check />}
                     </div>
                   ))}
                 </div>
+                {activeReveal?.explanation && (
+                  <div className="question-explanation">
+                    <CircleHelp /> <p>{activeReveal.explanation}</p>
+                  </div>
+                )}
                 <div className="answer-progress">
                   <div>
                     <span>{tr("Đã trả lời", "Answered")}</span>
@@ -3382,24 +5002,53 @@ function HostGame() {
             )}
           </section>
           <aside className="host-control">
-            <Leaderboard entries={snapshot.leaderboard} />
-            {snapshot.session.settings.teamMode && (
-              <TeamLeaderboard entries={snapshot.teamLeaderboard} />
+            {phase === "QUESTION_RESULT" ? (
+              <>
+                <Leaderboard entries={snapshot.leaderboard} />
+                {snapshot.session.settings.teamMode && (
+                  <TeamLeaderboard entries={snapshot.teamLeaderboard} />
+                )}
+              </>
+            ) : (
+              <div className="host-phase-card">
+                <Radio />
+                <span>
+                  <b>
+                    {snapshot.session.state === "PAUSED"
+                      ? tr("Đang tạm dừng", "Paused")
+                      : phase === "QUESTION_PREVIEW"
+                        ? tr("Đang chuẩn bị", "Previewing question")
+                        : tr("Đang nhận đáp án", "Accepting answers")}
+                  </b>
+                  <small>
+                    {tr(
+                      "Bảng xếp hạng sẽ xuất hiện sau khi đóng câu hỏi.",
+                      "The leaderboard appears after the question closes.",
+                    )}
+                  </small>
+                </span>
+              </div>
             )}
             <div className="host-buttons">
               <button
                 className="button button-primary button-lg button-block"
-                onClick={() => void advance()}
+                onClick={() => void pauseOrResume()}
               >
-                {snapshot.session.state === "RUNNING" ? (
+                {snapshot.session.state === "PAUSED" ? (
                   <>
-                    {tr("Công bố đáp án", "Reveal answer")} <Eye />
+                    <Play /> {tr("Tiếp tục", "Resume")}
                   </>
                 ) : (
                   <>
-                    {tr("Câu tiếp theo", "Next question")} <ChevronRight />
+                    <Pause /> {tr("Tạm dừng", "Pause")}
                   </>
                 )}
+              </button>
+              <button
+                className="button button-secondary button-block"
+                onClick={() => void skip()}
+              >
+                <SkipForward /> {tr("Bỏ qua câu hỏi", "Skip question")}
               </button>
               <button
                 className="button button-danger button-block"
@@ -3451,24 +5100,6 @@ function LobbySettings({
       icon: <Eye />,
     },
     {
-      key: "safeNames",
-      title: tr("Tên an toàn", "Safe names"),
-      text: tr(
-        "Tự tạo biệt danh trung tính thay cho tên đã nhập.",
-        "Generate a neutral nickname instead of using the entered name.",
-      ),
-      icon: <ShieldCheck />,
-    },
-    {
-      key: "hideCountryFlags",
-      title: tr("Ẩn quốc kỳ", "Hide country flags"),
-      text: tr(
-        "Không hiển thị quốc gia trên bảng xếp hạng.",
-        "Do not show countries on the leaderboard.",
-      ),
-      icon: <Globe2 />,
-    },
-    {
       key: "mutePlayers",
       title: tr("Tắt âm thiết bị", "Mute player devices"),
       text: tr(
@@ -3476,15 +5107,6 @@ function LobbySettings({
         "Keep player devices silent.",
       ),
       icon: <Volume2 />,
-    },
-    {
-      key: "speedScoring",
-      title: tr("Điểm theo tốc độ", "Speed scoring"),
-      text: tr(
-        "Trả lời đúng càng nhanh thì điểm thưởng càng cao.",
-        "Faster correct answers earn more points.",
-      ),
-      icon: <Zap />,
     },
   ];
   async function change(key: keyof SessionSettings) {
@@ -3536,10 +5158,12 @@ function LobbySettings({
 function HostLobby({
   snapshot,
   onStart,
+  onCancel,
   onRefresh,
 }: {
   snapshot: Snapshot;
   onStart: () => void;
+  onCancel: () => void;
   onRefresh: () => void;
 }) {
   const { tr } = usePreferences();
@@ -3554,6 +5178,17 @@ function HostLobby({
   };
   const [joinOrigin, setJoinOrigin] = useState(fallbackJoinOrigin);
   const [publicUrlConfigured, setPublicUrlConfigured] = useState(false);
+  const roomPrivacyKey = `rr_room_privacy_${snapshot.session.id}`;
+  const [roomInfoHidden, setRoomInfoHidden] = useState(
+    () => localStorage.getItem(roomPrivacyKey) === "hidden",
+  );
+  const toggleRoomPrivacy = () => {
+    setRoomInfoHidden((hidden) => {
+      const next = !hidden;
+      localStorage.setItem(roomPrivacyKey, next ? "hidden" : "visible");
+      return next;
+    });
+  };
   useEffect(() => {
     void request<{
       preferredOrigin: string;
@@ -3579,73 +5214,123 @@ function HostLobby({
   const localOnly = /localhost|127\.0\.0\.1|\[::1\]/.test(joinOrigin);
   const toast = useToast();
   async function kick(pid: string) {
-    await request(`/sessions/${snapshot.session.id}/kick/${pid}`, {
-      method: "POST",
-      token: hostToken(),
-    });
-    onRefresh();
+    try {
+      await request(`/sessions/${snapshot.session.id}/kick/${pid}`, {
+        method: "POST",
+        token: hostToken(),
+      });
+      onRefresh();
+    } catch (error) {
+      toast.show((error as Error).message);
+    }
   }
   return (
     <div className="host-lobby">
       <section className="lobby-share">
-        <span className="eyebrow">
-          <Radio size={16} /> {tr("Lobby đang mở", "Lobby is open")}
-        </span>
-        <h1>{snapshot.quiz.title}</h1>
-        <p>
-          {tr("Người chơi vào tại", "Players join at")}{" "}
-          <b>{joinOrigin.replace(/^https?:\/\//, "")}</b>
-        </p>
-        <div className="pin-display">
-          <span>PIN GAME</span>
-          <b>{snapshot.session.pin}</b>
-          <button
-            onClick={() => {
-              void navigator.clipboard.writeText(snapshot.session.pin);
-              toast.show(tr("Đã sao chép PIN.", "PIN copied."));
-            }}
-          >
-            <Copy />
-          </button>
-        </div>
-        <div className="qr-card">
-          <QRCodeSVG value={joinUrl} size={170} level="M" />
-          <b>{tr("Quét để tham gia", "Scan to join")}</b>
-          <small>
-            {tr(
-              "Dùng Camera/Safari/Chrome và cùng mạng Wi-Fi",
-              "Use Camera/Safari/Chrome on the same Wi-Fi",
-            )}
-          </small>
-          <code>{joinUrl.replace(/^https?:\/\//, "")}</code>
+        <div className="lobby-share-heading">
+          <span className="eyebrow">
+            <Radio size={16} /> {tr("Lobby đang mở", "Lobby is open")}
+          </span>
           <button
             type="button"
-            onClick={() => {
-              void navigator.clipboard.writeText(joinUrl);
-              toast.show(
-                tr("Đã sao chép liên kết tham gia.", "Join link copied."),
-              );
-            }}
+            className={cx("room-privacy-toggle", roomInfoHidden && "active")}
+            onClick={toggleRoomPrivacy}
+            title={tr(
+              roomInfoHidden ? "Hiện thông tin phòng" : "Ẩn thông tin phòng",
+              roomInfoHidden
+                ? "Show room information"
+                : "Hide room information",
+            )}
           >
-            <Copy /> {tr("Sao chép link", "Copy link")}
+            {roomInfoHidden ? <Eye /> : <EyeOff />}
+            {tr(
+              roomInfoHidden ? "Hiện thông tin" : "Ẩn thông tin",
+              roomInfoHidden ? "Show info" : "Hide info",
+            )}
           </button>
         </div>
-        {localOnly && (
-          <div className="network-warning">
-            <CircleHelp />{" "}
-            {tr(
-              "QR đang dùng localhost nên điện thoại chưa thể mở.",
-              "The QR uses localhost, so phones cannot open it yet.",
-            )}
+        <h1>{snapshot.quiz.title}</h1>
+        {roomInfoHidden ? (
+          <div className="room-private-cover">
+            <div className="room-private-icon">
+              <ShieldCheck />
+            </div>
+            <h2>
+              {tr("Thông tin phòng đã được ẩn", "Room information is hidden")}
+            </h2>
+            <p>
+              {tr(
+                "PIN, mã QR và đường dẫn tham gia đang được bảo vệ khỏi người không mong muốn.",
+                "The PIN, QR code, and join link are protected from unwanted viewers.",
+              )}
+            </p>
+            <div className="masked-room-pin">••• •••</div>
+            <button
+              type="button"
+              className="button button-secondary button-block"
+              onClick={toggleRoomPrivacy}
+            >
+              <Eye /> {tr("Hiện lại thông tin phòng", "Show room information")}
+            </button>
           </div>
-        )}
-        {!localOnly && !publicUrlConfigured && (
-          <div className="network-note">
-            {tr(
-              "Điện thoại và máy tính cần kết nối cùng một Wi-Fi.",
-              "The phone and computer must use the same Wi-Fi network.",
+        ) : (
+          <>
+            <p>
+              {tr("Người chơi vào tại", "Players join at")}{" "}
+              <b>{joinOrigin.replace(/^https?:\/\//, "")}</b>
+            </p>
+            <div className="pin-display">
+              <span>{tr("MÃ PIN", "GAME PIN")}</span>
+              <b>{snapshot.session.pin}</b>
+              <button
+                onClick={() => {
+                  void navigator.clipboard.writeText(snapshot.session.pin);
+                  toast.show(tr("Đã sao chép PIN.", "PIN copied."));
+                }}
+              >
+                <Copy />
+              </button>
+            </div>
+            <div className="qr-card">
+              <QRCodeSVG value={joinUrl} size={170} level="M" />
+              <b>{tr("Quét để tham gia", "Scan to join")}</b>
+              <small>
+                {tr(
+                  "Dùng Camera/Safari/Chrome và cùng mạng Wi-Fi",
+                  "Use Camera/Safari/Chrome on the same Wi-Fi",
+                )}
+              </small>
+              <code>{joinUrl.replace(/^https?:\/\//, "")}</code>
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard.writeText(joinUrl);
+                  toast.show(
+                    tr("Đã sao chép liên kết tham gia.", "Join link copied."),
+                  );
+                }}
+              >
+                <Copy /> {tr("Sao chép link", "Copy link")}
+              </button>
+            </div>
+            {localOnly && (
+              <div className="network-warning">
+                <CircleHelp />{" "}
+                {tr(
+                  "QR đang dùng localhost nên điện thoại chưa thể mở.",
+                  "The QR uses localhost, so phones cannot open it yet.",
+                )}
+              </div>
             )}
-          </div>
+            {!localOnly && !publicUrlConfigured && (
+              <div className="network-note">
+                {tr(
+                  "Điện thoại và máy tính cần kết nối cùng một Wi-Fi.",
+                  "The phone and computer must use the same Wi-Fi network.",
+                )}
+              </div>
+            )}
+          </>
         )}
         <button
           className="button button-primary button-xl"
@@ -3657,6 +5342,13 @@ function HostLobby({
           <span>
             {snapshot.playerCount} {tr("người", "players")}
           </span>
+        </button>
+        <button
+          type="button"
+          className="button button-danger"
+          onClick={onCancel}
+        >
+          <X /> {tr("Hủy phòng", "Cancel lobby")}
         </button>
       </section>
       <section className="lobby-roster">
@@ -3683,13 +5375,14 @@ function HostLobby({
         <div className="player-cloud">
           {snapshot.players.map((p, i) => (
             <div
-              className="player-bubble"
+              className={cx("player-bubble", !p.online && "offline")}
               style={{ animationDelay: `${i * 40}ms` }}
               key={p.id}
             >
-              <span>{avatarEmoji[p.avatar] || "🚀"}</span>
+              <PlayerAvatar value={p.avatar} size={42} />
               <b>{p.nickname}</b>
               {p.team && <small>{p.team}</small>}
+              {!p.online && <small>{tr("Mất kết nối", "Disconnected")}</small>}
               <button
                 onClick={() => void kick(p.id)}
                 title={tr("Loại khỏi phòng", "Remove from room")}
@@ -3734,10 +5427,12 @@ function HostLobby({
 function HostFinal({
   snapshot,
   onReport,
+  onReplay,
   onExit,
 }: {
   snapshot: Snapshot;
   onReport: () => void;
+  onReplay: () => void;
   onExit: () => void;
 }) {
   const { tr } = usePreferences();
@@ -3755,7 +5450,7 @@ function HostFinal({
         ].map((e, i) =>
           e ? (
             <div key={e.playerId} className={`podium-${[2, 1, 3][i]}`}>
-              <span>{avatarEmoji[e.avatar] || "🚀"}</span>
+              <PlayerAvatar value={e.avatar} size={72} />
               <b>{e.nickname}</b>
               <strong>{e.score.toLocaleString()}</strong>
               <i>{[2, 1, 3][i]}</i>
@@ -3767,6 +5462,12 @@ function HostFinal({
         <button className="button button-primary button-lg" onClick={onReport}>
           <BarChart3 />
           {tr("Xem báo cáo", "View report")}
+        </button>
+        <button
+          className="button button-secondary button-lg"
+          onClick={onReplay}
+        >
+          <Play /> {tr("Chơi lại", "Play again")}
         </button>
         <button className="button button-secondary button-lg" onClick={onExit}>
           {tr("Về dashboard", "Back to dashboard")}
@@ -3782,10 +5483,29 @@ function Report() {
   const nav = useNavigate();
   const token = hostToken();
   const [report, setReport] = useState<any>(null);
+  const [error, setError] = useState("");
   useEffect(() => {
-    if (token) request(`/sessions/${id}/report`, { token }).then(setReport);
+    if (token)
+      request(`/sessions/${id}/report`, { token })
+        .then(setReport)
+        .catch((reason) => setError((reason as Error).message));
   }, [id]);
   if (!token) return <Navigate to="/login" />;
+  if (error)
+    return (
+      <Page>
+        <Empty
+          icon={<BarChart3 />}
+          title={tr("Không thể mở báo cáo", "Could not open report")}
+          text={error}
+          action={
+            <Link className="button button-secondary" to="/dashboard/reports">
+              <ArrowLeft /> {tr("Danh sách báo cáo", "Report list")}
+            </Link>
+          }
+        />
+      </Page>
+    );
   if (!report)
     return (
       <div className="full-loader">
@@ -3813,6 +5533,19 @@ function Report() {
         `${p.accuracy}%`,
         p.avgResponseMs,
       ]),
+      [],
+      [
+        tr("Câu hỏi", "Question"),
+        tr("Lượt trả lời", "Answers"),
+        tr("Số câu đúng", "Correct answers"),
+        tr("Độ chính xác", "Accuracy"),
+      ],
+      ...report.questions.map((question: any) => [
+        question.prompt,
+        question.answers,
+        question.correct,
+        `${question.accuracy}%`,
+      ]),
     ];
     const blob = new Blob(
       [
@@ -3826,9 +5559,11 @@ function Report() {
       { type: "text/csv;charset=utf-8" },
     );
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
+    const url = URL.createObjectURL(blob);
+    a.href = url;
     a.download = `rankrush-${id}-report.csv`;
     a.click();
+    URL.revokeObjectURL(url);
   }
   return (
     <Page>
@@ -3908,7 +5643,7 @@ function Report() {
                     </td>
                     <td>
                       <span className="table-player">
-                        {avatarEmoji[p.avatar] || "🚀"}
+                        <PlayerAvatar value={p.avatar} size={34} />
                         <b>{p.nickname}</b>
                       </span>
                     </td>
@@ -3975,6 +5710,7 @@ function PracticeQuiz() {
   const [result, setResult] = useState<{
     correct: boolean;
     correctOptionId: string;
+    correctAnswer: string;
     explanation: string;
   } | null>(null);
   const [error, setError] = useState("");
@@ -4022,7 +5758,7 @@ function PracticeQuiz() {
               "Hãy thử lại để củng cố thế mạnh ở nhánh",
               "Try again to strengthen your skills in",
             )}{" "}
-            {data.quiz.subcategory || data.quiz.category}.
+            {contentLabel(data.quiz.subcategory || data.quiz.category, tr)}.
           </p>
           <div className="practice-actions">
             <Link className="button button-secondary" to="/">
@@ -4053,6 +5789,7 @@ function PracticeQuiz() {
       const checked = await request<{
         correct: boolean;
         correctOptionId: string;
+        correctAnswer: string;
         explanation: string;
       }>(`/quizzes/${id}/practice/${question!.id}/check`, {
         method: "POST",
@@ -4076,7 +5813,9 @@ function PracticeQuiz() {
           </Link>
           <div>
             <b>{data.quiz.title}</b>
-            <span>{data.quiz.subcategory || data.quiz.category}</span>
+            <span>
+              {contentLabel(data.quiz.subcategory || data.quiz.category, tr)}
+            </span>
           </div>
           <strong>
             {score} {tr("điểm", "points")} · {index + 1}/{data.questions.length}
@@ -4138,6 +5877,12 @@ function PracticeQuiz() {
                     : tr("Chưa chính xác", "Not correct")}
                 </b>
                 <p>
+                  {!result.correct && result.correctAnswer && (
+                    <strong>
+                      {tr("Đáp án đúng", "Correct answer")}:{" "}
+                      {result.correctAnswer}
+                    </strong>
+                  )}
                   {result.explanation ||
                     tr(
                       "Hãy ghi nhớ đáp án đúng và tiếp tục.",
@@ -4190,15 +5935,47 @@ function PublicQuiz() {
   const { tr } = usePreferences();
   const { id = "" } = useParams();
   const nav = useNavigate();
+  const [error, setError] = useState("");
   const [data, setData] = useState<{
     quiz: Quiz;
     questions: Question[];
   } | null>(null);
   useEffect(() => {
-    request<{ quiz: Quiz; questions: Question[] }>(`/quizzes/${id}`).then(
-      setData,
-    );
+    request<{ quiz: Quiz; questions: Question[] }>(`/quizzes/${id}`, {
+      token: hostToken(),
+    })
+      .then(setData)
+      .catch((reason) => setError((reason as Error).message));
   }, [id]);
+  async function hostNow() {
+    const token = hostToken();
+    if (!token) {
+      sessionStorage.setItem("rr_pending_host_quiz", id);
+      nav("/login");
+      return;
+    }
+    try {
+      const room = await createHostRoom(id, token);
+      nav(`/host/${room.id}`);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+  if (!data && error)
+    return (
+      <Page>
+        <Empty
+          icon={<BookOpen />}
+          title={tr("Không thể mở quiz", "Could not open quiz")}
+          text={error}
+          action={
+            <Link className="button button-secondary" to="/">
+              <ArrowLeft /> {tr("Về thư viện", "Back to library")}
+            </Link>
+          }
+        />
+      </Page>
+    );
   if (!data)
     return (
       <div className="full-loader">
@@ -4215,10 +5992,10 @@ function PublicQuiz() {
         </button>
         <div
           className="public-cover"
-          style={{ background: data.quiz.coverColor }}
+          style={{ background: displayCoverColor(data.quiz.coverColor) }}
         >
           <BookOpen />
-          <span>{data.quiz.category}</span>
+          <span>{contentLabel(data.quiz.category, tr)}</span>
         </div>
         <div>
           <span className="eyebrow">{tr("Quiz công khai", "Public quiz")}</span>
@@ -4243,19 +6020,20 @@ function PublicQuiz() {
             </span>
           </div>
           <div className="public-actions">
-            <Link
+            <button
               className="button button-primary button-lg"
-              to={`/practice/${data.quiz.id}`}
+              onClick={() => void hostNow()}
             >
               <Play /> {tr("Chơi ngay", "Play now")}
-            </Link>
+            </button>
             <Link
               className="button button-secondary button-lg"
-              to={hostToken() ? "/dashboard" : "/login"}
+              to={`/practice/${data.quiz.id}`}
             >
-              <Radio /> {tr("Tổ chức trực tiếp", "Host live")}
+              <Target /> {tr("Luyện tập một mình", "Practice solo")}
             </Link>
           </div>
+          <ErrorBox error={error} />
         </div>
       </div>
       <div className="preview-questions">
@@ -4288,26 +6066,28 @@ export default function App() {
     }
   }, [location.pathname, location.hash]);
   return (
-    <Routes>
-      <Route path="/" element={<Home />} />
-      <Route path="/login" element={<Auth mode="login" />} />
-      <Route path="/register" element={<Auth mode="register" />} />
-      <Route path="/forgot-password" element={<ForgotPassword />} />
-      <Route path="/dashboard" element={<Dashboard />} />
-      <Route path="/dashboard/quizzes" element={<Dashboard />} />
-      <Route path="/dashboard/reports" element={<ReportsPage />} />
-      <Route path="/dashboard/leaderboards" element={<LeaderboardsPage />} />
-      <Route path="/dashboard/settings" element={<SettingsPage />} />
-      <Route path="/ai-create" element={<AiCreatePage />} />
-      <Route path="/editor/:id" element={<Editor />} />
-      <Route path="/join" element={<Join />} />
-      <Route path="/join/:pin" element={<Join />} />
-      <Route path="/play/:id" element={<PlayerGame />} />
-      <Route path="/host/:id" element={<HostGame />} />
-      <Route path="/report/:id" element={<Report />} />
-      <Route path="/quiz/:id" element={<PublicQuiz />} />
-      <Route path="/practice/:id" element={<PracticeQuiz />} />
-      <Route path="*" element={<Navigate to="/" />} />
-    </Routes>
+    <ConfirmationProvider>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/login" element={<Auth mode="login" />} />
+        <Route path="/register" element={<Auth mode="register" />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/dashboard/quizzes" element={<Dashboard />} />
+        <Route path="/dashboard/reports" element={<ReportsPage />} />
+        <Route path="/dashboard/leaderboards" element={<LeaderboardsPage />} />
+        <Route path="/dashboard/settings" element={<SettingsPage />} />
+        <Route path="/ai-create" element={<AiCreatePage />} />
+        <Route path="/editor/:id" element={<Editor />} />
+        <Route path="/join" element={<Join />} />
+        <Route path="/join/:pin" element={<Join />} />
+        <Route path="/play/:id" element={<PlayerGame />} />
+        <Route path="/host/:id" element={<HostGame />} />
+        <Route path="/report/:id" element={<Report />} />
+        <Route path="/quiz/:id" element={<PublicQuiz />} />
+        <Route path="/practice/:id" element={<PracticeQuiz />} />
+        <Route path="*" element={<Navigate to="/" />} />
+      </Routes>
+    </ConfirmationProvider>
   );
 }

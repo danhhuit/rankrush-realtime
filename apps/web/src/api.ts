@@ -1,10 +1,18 @@
 const API = "/api";
 const englishErrors: Record<string, string> = {
   CORS_ORIGIN_DENIED: "This website origin is not allowed.",
+  CURRENT_PASSWORD_INVALID: "Your current password is incorrect.",
   EMAIL_EXISTS: "This email address is already in use.",
+  EMAIL_CODE_INVALID: "The email verification code is invalid or has expired.",
+  EMAIL_CODE_RATE_LIMITED:
+    "Please wait 60 seconds before requesting another code.",
+  EMAIL_SEND_FAILED:
+    "The verification email could not be sent. Check the SMTP configuration.",
   FORBIDDEN: "You do not have permission to perform this action.",
   GENERATOR_SOURCE_REQUIRED: "Enter a subject or upload a PDF.",
-  LOGIN_FAILED: "Email or password is incorrect.",
+  LOGIN_FAILED: "Username/email or password is incorrect.",
+  LOGIN_RATE_LIMITED:
+    "Too many failed login attempts. Try again in 15 minutes.",
   NICKNAME_EXISTS: "This nickname is already being used in the room.",
   PDF_TEXT_EMPTY: "No readable text was found in this PDF.",
   PIN_NOT_FOUND: "The PIN does not exist or has expired.",
@@ -12,13 +20,22 @@ const englishErrors: Record<string, string> = {
   QUESTION_CLOSED: "This question is no longer accepting answers.",
   QUESTION_TIMEOUT: "The answer time has expired.",
   QUIZ_EMPTY: "Add at least one question before starting.",
+  QUIZ_INVALID:
+    "Review the quiz and correct invalid questions before publishing.",
   QUIZ_NOT_FOUND: "Quiz not found.",
   RESET_CODE_INVALID: "The reset code is invalid or has expired.",
   SESSION_FULL: "This room is full.",
+  SESSION_EMPTY: "At least one player is required to start.",
+  SESSION_ENDED: "This game session has already ended.",
   SESSION_NOT_FOUND: "Game session not found.",
   SESSION_NOT_JOINABLE: "This game can no longer be joined.",
+  SESSION_NOT_CANCELLABLE: "Only a lobby can be cancelled.",
+  SESSION_NOT_REPLAYABLE: "Only a completed game can be played again.",
   SETTINGS_LOCKED: "Room settings cannot be changed after the game starts.",
   UNAUTHORIZED: "Please log in to continue.",
+  UNSAFE_NICKNAME:
+    "This nickname contains inappropriate content. Choose another name.",
+  USERNAME_EXISTS: "This username is already in use.",
   VALIDATION_ERROR: "Some submitted information is invalid.",
 };
 

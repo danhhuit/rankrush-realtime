@@ -34,4 +34,21 @@ describe("generateQuizQuestions", () => {
     expect(questions[0]?.prompt).toContain("_____");
     expect(questions[0]?.explanation.length).toBeGreaterThan(30);
   });
+
+  it("applies English and hard-difficulty settings in local fallback", () => {
+    const questions = generateQuizQuestions({
+      subject: "Redis leaderboard",
+      count: 3,
+      language: "en",
+      difficulty: "HARD",
+    });
+    expect(questions).toHaveLength(3);
+    expect(questions[0]?.prompt).toMatch(/^Which /);
+    expect(questions.every((question) => question.timeLimitSec === 15)).toBe(
+      true,
+    );
+    expect(questions.every((question) => question.basePoints === 800)).toBe(
+      true,
+    );
+  });
 });

@@ -1,5 +1,12 @@
-import "dotenv/config";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
 import { z } from "zod";
+
+// Workspace scripts may run with apps/api as cwd. Always also load the root .env.
+const here = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config();
+dotenv.config({ path: path.resolve(here, "../../../.env") });
 
 const schema = z.object({
   NODE_ENV: z
@@ -16,6 +23,20 @@ const schema = z.object({
   JOIN_CODE_TTL_SECONDS: z.coerce.number().int().positive().default(86400),
   MAX_PLAYERS_PER_SESSION: z.coerce.number().int().positive().default(300),
   RESET_CODE_TTL_SECONDS: z.coerce.number().int().positive().default(900),
+  EMAIL_CODE_TTL_SECONDS: z.coerce.number().int().positive().default(600),
+  EMAIL_DEV_CODE_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((value) => value === "true"),
+  SMTP_HOST: z.string().default(""),
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  SMTP_SECURE: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((value) => value === "true"),
+  SMTP_USER: z.string().default(""),
+  SMTP_PASS: z.string().default(""),
+  SMTP_FROM: z.string().default("RankRush <no-reply@rankrush.local>"),
   OLLAMA_ENABLED: z
     .enum(["true", "false"])
     .default("true")

@@ -1,9 +1,14 @@
-export function calculateScore(basePoints: number, timeLimitSec: number, responseMs: number, correct: boolean, speedScoring = true) {
+export function calculateScore(
+  timeLimitSec: number,
+  responseMs: number,
+  correct: boolean,
+  doublePoints = false,
+) {
   if (!correct) return 0;
-  if (!speedScoring) return basePoints;
-  const maxBonus = Math.round(basePoints * 2 / 3);
-  const elapsedRatio = Math.min(1, Math.max(0, responseMs / (timeLimitSec * 1000)));
-  return basePoints + Math.max(0, Math.floor(maxBonus * (1 - elapsedRatio)));
+  const durationMs = Math.max(1, timeLimitSec * 1000);
+  const elapsedRatio = Math.min(1, Math.max(0, responseMs / durationMs));
+  const points = Math.max(100, 1_000 - Math.floor(elapsedRatio * 10) * 100);
+  return points * (doublePoints ? 2 : 1);
 }
 
 export function normalizeText(value: string) {

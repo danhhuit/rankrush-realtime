@@ -13,6 +13,8 @@ export type GeneratedQuestion = Pick<
   | "order"
   | "explanation"
 >;
+type GenerationLanguage = "vi" | "en";
+type GenerationDifficulty = "EASY" | "MEDIUM" | "HARD";
 
 const stopWords = new Set(
   "và là của có được trong một những cho với từ này đó các khi về trên dưới hoặc bằng vào theo để như không người the and for with from that this are was were have has".split(
@@ -36,12 +38,19 @@ function optionQuestion(
   distractors: string[],
   order: number,
   explanation: string,
+  language: GenerationLanguage = "vi",
+  difficulty: GenerationDifficulty = "MEDIUM",
 ): GeneratedQuestion {
   const values = [correct, ...distractors.filter((x) => x !== correct)].slice(
     0,
     4,
   );
-  while (values.length < 4) values.push(`Lựa chọn ${values.length + 1}`);
+  while (values.length < 4)
+    values.push(
+      language === "en"
+        ? `Option ${values.length + 1}`
+        : `Lựa chọn ${values.length + 1}`,
+    );
   const options = values.map((text) => ({ id: nanoid(8), text }));
   return {
     type: "SINGLE_CHOICE",
@@ -49,14 +58,19 @@ function optionQuestion(
     options,
     correctOptionId: options[0]!.id,
     acceptedAnswers: [],
-    timeLimitSec: 20,
-    basePoints: 600,
+    timeLimitSec: { EASY: 30, MEDIUM: 20, HARD: 15 }[difficulty],
+    basePoints: { EASY: 400, MEDIUM: 600, HARD: 800 }[difficulty],
     order,
     explanation,
   };
 }
 
-function fromDocument(source: string, count: number) {
+function fromDocument(
+  source: string,
+  count: number,
+  language: GenerationLanguage,
+  difficulty: GenerationDifficulty,
+) {
   const text = cleanText(source);
   const sentences = text
     .split(/(?<=[.!?])\s+/)
@@ -67,7 +81,7 @@ function fromDocument(source: string, count: number) {
   for (const sentence of sentences) {
     const correct = keywords(sentence)[0];
     if (!correct || output.some((q) => q.prompt.includes(correct))) continue;
-    const prompt = `Điền khái niệm còn thiếu: ${sentence.replace(
+    const prompt = `${language === "en" ? "Fill in the missing concept" : "Điền khái niệm còn thiếu"}: ${sentence.replace(
       new RegExp(correct.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"),
       "_____",
     )}`;
@@ -82,6 +96,8 @@ function fromDocument(source: string, count: number) {
         distractors.slice(output.length, output.length + 3),
         output.length,
         sentence,
+        language,
+        difficulty,
       ),
     );
     if (output.length >= count) break;
@@ -185,35 +201,173 @@ const subjectBanks: Array<{
   },
 ];
 
-function fromSubject(subject: string, count: number) {
-  const bank = subjectBanks.find((item) => item.match.test(subject));
-  const facts = bank?.facts ?? [
-    [
-      `Mục tiêu chính khi học “${subject}” là gì?`,
-      "Hiểu khái niệm và biết vận dụng",
-      ["Chỉ học thuộc từ khóa", "Bỏ qua ví dụ", "Không cần thực hành"],
+const englishSubjectBanks: typeof subjectBanks = [
+  {
+    match: /redis|leaderboard|ranking/i,
+    facts: [
+      [
+        "Which Redis data structure is best suited to a leaderboard?",
+        "Sorted Set",
+        ["List", "Hash", "Stream"],
+      ],
+      [
+        "Which command atomically increments a Sorted Set member's score?",
+        "ZINCRBY",
+        ["LPUSH", "HSET", "SADD"],
+      ],
+      [
+        "Which command returns a member's rank from highest score to lowest?",
+        "ZREVRANK",
+        ["ZRANK", "ZSCORE", "ZSCAN"],
+      ],
+      [
+        "Which command reads the Top 10 from highest score to lowest?",
+        "ZREVRANGE",
+        ["LRANGE", "SMEMBERS", "GET"],
+      ],
+      [
+        "What key property makes ZINCRBY suitable for concurrent scoring?",
+        "Atomic execution",
+        ["Manual sequencing", "Frontend ordering", "File locking"],
+      ],
     ],
-    [
-      `Cách kiểm tra hiểu biết về “${subject}” hiệu quả nhất?`,
-      "Kết hợp câu hỏi và tình huống",
-      ["Chỉ đọc tiêu đề", "Không phản hồi", "Chỉ đo thời gian"],
+  },
+  {
+    match: /nosql|database/i,
+    facts: [
+      [
+        "Which workload is commonly well suited to NoSQL?",
+        "Flexible data at high scale",
+        ["Only fixed tables", "Only image files", "Queries without data"],
+      ],
+      [
+        "What is MongoDB's primary data model?",
+        "Document",
+        ["Graph", "Queue", "Plain binary file"],
+      ],
+      [
+        "Which data model is Neo4j known for?",
+        "Graph",
+        ["Key-value", "Wide column", "Document"],
+      ],
+      [
+        "How are Cassandra tables commonly designed?",
+        "Around query patterns",
+        ["Around joins", "Around UI colors", "Around file names"],
+      ],
+      [
+        "Where does Redis primarily keep working data?",
+        "Memory",
+        ["Magnetic tape", "GPU memory only", "A CDN"],
+      ],
     ],
-    [
-      `Khi gặp khái niệm mới trong “${subject}”, nên làm gì trước?`,
-      "Xác định định nghĩa và ví dụ",
-      ["Bỏ qua bối cảnh", "Ghi nhớ đáp án sai", "Không đối chiếu"],
+  },
+  {
+    match: /javascript|typescript|programming/i,
+    facts: [
+      [
+        "What does TypeScript add to JavaScript?",
+        "A static type system",
+        ["A database", "A new browser", "A separate virtual machine"],
+      ],
+      [
+        "What does a Promise represent?",
+        "An asynchronous result",
+        ["A CSS selector", "A table", "An image"],
+      ],
+      [
+        "Which keyword declares a binding that cannot be reassigned?",
+        "const",
+        ["var", "let", "function"],
+      ],
+      [
+        "What does Array.map normally return?",
+        "A new array",
+        ["A boolean", "A socket", "No value"],
+      ],
+      [
+        "What does JSON.parse do?",
+        "Converts JSON text into a value",
+        ["Hashes a password", "Compresses an image", "Sorts an array"],
+      ],
     ],
-    [
-      `Hoạt động nào giúp ghi nhớ “${subject}” tốt hơn?`,
-      "Thực hành truy hồi kiến thức",
-      ["Đọc lướt một lần", "Không làm bài", "Chỉ xem đáp án"],
-    ],
-    [
-      `Một câu hỏi tốt về “${subject}” cần đặc điểm gì?`,
-      "Rõ ràng và có một đáp án tốt nhất",
-      ["Mơ hồ", "Thiếu dữ kiện", "Nhiều đáp án tùy ý"],
-    ],
-  ];
+  },
+];
+
+function fromSubject(
+  subject: string,
+  count: number,
+  language: GenerationLanguage,
+  difficulty: GenerationDifficulty,
+) {
+  const bank = (language === "en" ? englishSubjectBanks : subjectBanks).find(
+    (item) => item.match.test(subject),
+  );
+  const fallbackFacts: Array<[string, string, string[]]> =
+    language === "en"
+      ? [
+          [
+            `What is the main goal when studying “${subject}”?`,
+            "Understand concepts and apply them",
+            ["Memorize keywords only", "Ignore examples", "Avoid practice"],
+          ],
+          [
+            `How can understanding of “${subject}” be checked effectively?`,
+            "Combine questions with scenarios",
+            ["Read headings only", "Avoid feedback", "Measure time only"],
+          ],
+          [
+            `What should you do first with a new concept in “${subject}”?`,
+            "Identify its definition and an example",
+            [
+              "Ignore context",
+              "Memorize an incorrect answer",
+              "Avoid comparison",
+            ],
+          ],
+          [
+            `Which activity improves retention of “${subject}”?`,
+            "Practice retrieving the knowledge",
+            ["Skim it once", "Skip exercises", "Only view the answer"],
+          ],
+          [
+            `What makes a good question about “${subject}”?`,
+            "It is clear and has one best answer",
+            [
+              "It is ambiguous",
+              "It omits required facts",
+              "It has arbitrary answers",
+            ],
+          ],
+        ]
+      : [
+          [
+            `Mục tiêu chính khi học “${subject}” là gì?`,
+            "Hiểu khái niệm và biết vận dụng",
+            ["Chỉ học thuộc từ khóa", "Bỏ qua ví dụ", "Không cần thực hành"],
+          ],
+          [
+            `Cách kiểm tra hiểu biết về “${subject}” hiệu quả nhất?`,
+            "Kết hợp câu hỏi và tình huống",
+            ["Chỉ đọc tiêu đề", "Không phản hồi", "Chỉ đo thời gian"],
+          ],
+          [
+            `Khi gặp khái niệm mới trong “${subject}”, nên làm gì trước?`,
+            "Xác định định nghĩa và ví dụ",
+            ["Bỏ qua bối cảnh", "Ghi nhớ đáp án sai", "Không đối chiếu"],
+          ],
+          [
+            `Hoạt động nào giúp ghi nhớ “${subject}” tốt hơn?`,
+            "Thực hành truy hồi kiến thức",
+            ["Đọc lướt một lần", "Không làm bài", "Chỉ xem đáp án"],
+          ],
+          [
+            `Một câu hỏi tốt về “${subject}” cần đặc điểm gì?`,
+            "Rõ ràng và có một đáp án tốt nhất",
+            ["Mơ hồ", "Thiếu dữ kiện", "Nhiều đáp án tùy ý"],
+          ],
+        ];
+  const facts = bank?.facts ?? fallbackFacts;
   return Array.from({ length: count }, (_, index) => {
     const [prompt, correct, distractors] = facts[index % facts.length]!;
     return optionQuestion(
@@ -221,7 +375,11 @@ function fromSubject(subject: string, count: number) {
       correct,
       distractors,
       index,
-      `Nội dung được tạo từ chủ đề “${subject}”; Host nên rà soát trước khi xuất bản.`,
+      language === "en"
+        ? `Generated from the subject “${subject}”; the Host should review it before publishing.`
+        : `Nội dung được tạo từ chủ đề “${subject}”; Host nên rà soát trước khi xuất bản.`,
+      language,
+      difficulty,
     );
   });
 }
@@ -230,10 +388,14 @@ export function generateQuizQuestions(input: {
   subject: string;
   sourceText?: string;
   count: number;
+  language?: GenerationLanguage;
+  difficulty?: GenerationDifficulty;
 }) {
+  const language = input.language || "vi";
+  const difficulty = input.difficulty || "MEDIUM";
   const fromPdf = input.sourceText
-    ? fromDocument(input.sourceText, input.count)
+    ? fromDocument(input.sourceText, input.count, language, difficulty)
     : [];
   if (fromPdf.length >= Math.min(3, input.count)) return fromPdf;
-  return fromSubject(input.subject, input.count);
+  return fromSubject(input.subject, input.count, language, difficulty);
 }

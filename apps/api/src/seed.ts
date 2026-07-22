@@ -35,7 +35,7 @@ const quizData = [
     category: "Technology",
     subcategory: "Redis",
     popularity: 95,
-    coverColor: "#6C5CE7",
+    coverColor: "#2B9FBD",
   },
   {
     title: "Nền tảng NoSQL",
@@ -171,6 +171,7 @@ async function seed() {
   const now = new Date().toISOString();
   const user: User = {
     id: "host-danhtn",
+    username: "danhtn",
     email: "danhtn@rankrush.local",
     displayName: "Thành Danh",
     passwordHash: await bcrypt.hash("RankRush@123", 12),
@@ -571,6 +572,7 @@ async function seed() {
         (_, questionIndex) => `question-${i * 5 + questionIndex + 1}`,
       ),
       settings: {
+        autoAdvance: false,
         teamMode: i === 2,
         hideLeaderboard: false,
         safeNames: false,

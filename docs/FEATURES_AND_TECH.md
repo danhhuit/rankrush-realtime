@@ -1,162 +1,289 @@
 # Phạm vi chức năng và công nghệ RankRush
 
-Tài liệu này là phạm vi chốt cho MVP. RankRush tham khảo luồng tham gia bằng PIN,
-quiz editor, lobby, điều khiển trận và các tùy chọn host của
-[Quiz.com](https://quiz.com/) và [màn hình vote/lobby](https://quiz.com/play/vote/),
-nhưng dùng tên, giao diện, dữ liệu và mã nguồn độc lập.
+Tài liệu này mô tả trạng thái đã triển khai của RankRush Realtime. Hệ thống tham
+khảo các mẫu tương tác quen thuộc của quiz trực tiếp nhưng dùng thương hiệu,
+giao diện, dữ liệu và mã nguồn độc lập.
 
-## Chức năng bắt buộc
+## 1. Vai trò và chức năng
 
-### Khách và người chơi
+### 1.1. Khách và người chơi
 
-1. Nhập PIN để tham gia mà không cần tài khoản.
-2. Chọn biệt danh, avatar, quốc gia và đội (khi bật Team mode).
-3. Vào lobby và xem người chơi tham gia theo thời gian thực.
-4. Nhận câu hỏi, bộ đếm thời gian và gửi một đáp án duy nhất.
-5. Nhận phản hồi đúng/sai, điểm cộng và tổng điểm.
-6. Xem Top 10, thứ hạng cá nhân và kết quả cuối.
-7. Tự nối lại phiên khi trình duyệt mất kết nối ngắn hạn.
+1. Tìm quiz công khai theo từ khóa, lĩnh vực và nhánh nội dung.
+2. Nhập PIN 6 số ở navbar hoặc trang Join; có thể mở trực tiếp đường dẫn từ QR.
+3. Tham gia không cần tài khoản bằng biệt danh và avatar tùy biến.
+4. Nút xúc xắc chọn ngẫu nhiên từ khoảng 200 tổ hợp tên thân thiện; tên tự nhập
+   hợp lệ được giữ nguyên.
+5. Bộ lọc biệt danh chạy bắt buộc tại API, không phụ thuộc thiết lập phòng.
+6. Vào lobby, xem số người tham gia và chờ Host bắt đầu.
+7. Nhận đầy đủ các pha đếm ngược, xem trước câu hỏi, trả lời, kết quả câu và bảng
+   xếp hạng qua Socket.IO.
+8. Chọn đáp án là gửi ngay; không có bước xác nhận và không thể gửi lần hai.
+9. Xem điểm cá nhân, Top 10, bục chiến thắng và thống kê cuối trận.
+10. Chọn một trong 15 bản nhạc nền Web Audio, tạm dừng và chỉnh âm lượng.
+11. Chuyển sáng/tối và Việt/Anh; lựa chọn được lưu ở trình duyệt.
+12. Cảnh báo khi chuyển route, reload, đóng tab hoặc rời website trong lúc phòng
+    còn hoạt động.
+13. Mỗi tab giữ token và metadata player trong `sessionStorage`; hai tab không
+    dùng chung lựa chọn đáp án.
 
-### Host
+### 1.2. Host
 
-1. Đăng ký, đăng nhập và nhận diện tài khoản Host/Admin.
-2. CRUD quiz và câu hỏi; lọc trạng thái, nháp, công khai, nhân bản và lưu thứ tự câu hỏi.
-3. Câu hỏi trắc nghiệm một đáp án, đúng/sai và nhập văn bản.
-4. Tạo phòng, PIN 6 chữ số và QR code.
-5. Cấu hình timer, xáo trộn câu/đáp án, Team mode, ẩn leaderboard, ẩn quốc kỳ,
-   tên an toàn, tắt âm thiết bị và điểm theo tốc độ.
-6. Quản lý lobby, loại người chơi, bắt đầu/chuyển câu/kết thúc game.
-7. Dashboard live: số người, tiến độ trả lời, Top 10 và xếp hạng đội.
-8. Báo cáo theo người chơi/câu hỏi, thời gian phản hồi và xuất CSV.
-9. Trang Báo cáo, Bảng xếp hạng và Cài đặt tài khoản có route và dữ liệu riêng.
-10. Tìm quiz và nhập PIN trực tiếp trên thanh điều hướng.
-11. Giao diện sáng/tối được lưu theo trình duyệt; ngôn ngữ Việt/Anh có thể đổi thủ
-    công và tự đổi theo quốc gia người chơi chọn khi tham gia.
-12. Mỗi tab giữ player token trong `sessionStorage`, vì vậy nhiều người có thể chơi
-    trên các tab khác nhau của cùng trình duyệt mà không ghi đè danh tính.
-13. Sau khi kết thúc, mỗi player nhận kết quả riêng gồm hạng, điểm, số câu đúng,
-    số câu đã trả lời và độ chính xác.
+1. Đăng ký bằng tên hiển thị, username, email, mật khẩu, xác nhận mật khẩu và mã
+   email 6 số.
+2. Đăng nhập bằng username hoặc email; giới hạn số lần đăng nhập sai.
+3. Quên mật khẩu qua mã email dùng một lần, mật khẩu mới và xác nhận mật khẩu.
+4. Dashboard tổng quan, Quiz của tôi, Thư viện, Báo cáo, Bảng xếp hạng và Cài đặt.
+5. CRUD quiz/câu hỏi; hỗ trợ nháp/công khai, nhân bản, sắp thứ tự và tìm kiếm.
+6. Câu hỏi một lựa chọn, đúng/sai và câu trả lời văn bản.
+7. Tạo phòng từ quiz đã xuất bản; PIN được giữ duy nhất bằng Redis `SET NX EX`.
+8. QR dùng địa chỉ LAN hoặc `PUBLIC_WEB_URL`; Host có thể ẩn PIN, QR và link.
+9. Lobby hiển thị avatar, nickname và số người realtime; Host có thể loại người
+   chơi trước khi bắt đầu.
+10. Thiết lập Team mode, ẩn leaderboard, tắt âm thiết bị và điểm theo tốc độ.
+11. Điều khiển bắt đầu, tạm dừng, tiếp tục, bỏ qua câu, kết thúc, hủy và chơi lại.
+12. Xem tiến độ trả lời của phòng mà không nhìn thấy đáp án riêng của Player.
+13. Xem báo cáo, bảng xếp hạng theo phiên và xuất CSV.
+14. Hộp thoại Có/Không thay cho `window.confirm()` ở mọi thao tác nguy hiểm.
+15. Cảnh báo rời trang khi Host còn quản lý một phòng đang hoạt động.
 
-### Tạo quiz tự động
+### 1.3. Tạo quiz tự động
 
-1. Tạo 3–15 câu hỏi từ một chủ đề phổ biến hoặc từ nội dung PDF.
-2. PDF được nhận qua multipart, giới hạn 10 MB và chỉ chấp nhận MIME PDF.
-3. Nội dung PDF được trích xuất ở backend; câu hỏi sinh ra luôn là bản nháp.
-4. Sau khi tạo, Host được chuyển thẳng đến Quiz Editor để rà soát đáp án, timer
-   và lời giải trước khi xuất bản.
-5. Backend gọi Ollama cục bộ với model `qwen2.5:3b`, yêu cầu kết quả theo JSON Schema
-   và kiểm tra lại bằng Zod trước khi lưu quiz nháp.
-6. Khi Ollama tắt, thiếu model hoặc quá thời gian, hệ thống tự chuyển sang bộ sinh
-   quy tắc cục bộ để người dùng vẫn tiếp tục được công việc và nhận cảnh báo rõ ràng.
-7. `GET /api/ai/status` cho giao diện biết Ollama có kết nối được và model đã sẵn
-   sàng hay chưa; không cần API key và nội dung PDF không phải gửi ra dịch vụ đám mây.
+1. Nhận chủ đề hoặc PDF có văn bản, tối đa 10 MB.
+2. Host chọn tên quiz, danh mục và số lượng 3–15 câu.
+3. Backend trích xuất PDF, gọi Ollama và yêu cầu output theo JSON Schema.
+4. Zod kiểm tra lại cấu trúc, lựa chọn, đáp án đúng, timer và lời giải.
+5. Quiz AI luôn được lưu dạng nháp và mở trong Quiz Editor để rà soát.
+6. Model mặc định là `qwen2.5:3b`; không cần API key đám mây.
+7. Khi Ollama tắt, thiếu model hoặc timeout, hệ thống dùng bộ sinh quy tắc cục bộ
+   và trả provider/cảnh báo rõ cho giao diện.
+8. `GET /api/ai/status` trả trạng thái kết nối, model và khả năng sinh quiz.
 
-### Redis nâng cao bắt buộc
-
-- `ZADD` tạo thành viên leaderboard với điểm 0.
-- `ZINCRBY` cộng điểm nguyên tử sau mỗi đáp án.
-- `ZREVRANGE ... WITHSCORES` trả Top 10; backend giữ nguyên thứ tự này.
-- `ZRANK`/`ZREVRANK` trả vị trí tài khoản đang kết nối.
-- `HASH`, `SET`, `LIST`, `STRING + TTL` lưu thực thể và trạng thái phiên.
-- Answer idempotency ngăn retry cộng điểm lần hai.
-
-## Chức năng mở rộng
-
-- Thư viện quiz công khai và danh mục.
-- Chế độ đội, cờ quốc gia, âm thanh và hiệu ứng nhẹ.
-- Có thể bổ sung model Ollama lớn hơn hoặc provider đám mây qua cùng lớp sinh câu hỏi.
-- Phân tích nâng cao, email kết quả và tích hợp LMS là hướng phát triển sau.
-
-## Luồng hoạt động đã triển khai
-
-1. Host đăng nhập, tạo/chỉnh sửa quiz và chọn **Tổ chức**.
-2. API tạo Session, sinh PIN 6 số có TTL và khởi tạo cấu trúc ZSET.
-3. Player tra PIN, chọn nickname/avatar/đội rồi nhận player JWT 24 giờ.
-4. Socket.IO đưa Host và Player vào room theo session; reconnect luôn nhận
-   snapshot mới nhất từ Redis.
-5. Host bắt đầu; câu hỏi được phát theo thứ tự phiên. Nếu bật xáo trộn, thứ tự
-   câu được lưu trong Session và đáp án được trộn xác định theo session/câu hỏi.
-6. Khi Player trả lời, Lua script kiểm tra idempotency, lưu Answer, cộng điểm
-   Player/Team và ghi Stream event trong một thao tác nguyên tử.
-7. Host công bố đáp án rồi chuyển câu. Kết thúc trận tạo bục chiến thắng và báo
-   cáo chi tiết; Host có thể xuất CSV.
-
-## Kiến trúc
+## 2. State machine của phòng chơi
 
 ```text
-React SPA (Host / Player / Report)
-          │ REST + Socket.IO
-          ▼
-Express API ── JWT / Zod / ownership guards
-          │
-          ▼
-Redis 7.4
-├─ HASH: User, Quiz, Question, Session, Player, Answer
-├─ SET/LIST: chỉ mục, thành viên phòng, thứ tự câu hỏi
-├─ STRING + TTL: ánh xạ PIN → Session
-├─ ZSET: leaderboard Player và Team
-└─ STREAM: sự kiện join/answer phục vụ audit và mở rộng analytics
+LOBBY
+  │ Host bấm Bắt đầu
+  ▼
+GAME_COUNTDOWN (3 → 2 → 1 → Bắt đầu, tổng 4 giây)
+  ▼
+QUESTION_PREVIEW (5 giây, câu hỏi và đáp án xuất hiện lần lượt)
+  ▼
+RUNNING (timer riêng của câu hỏi, mặc định thường là 20 giây)
+  ▼
+QUESTION_RESULT (5 giây, kết quả câu và leaderboard)
+  ├─ còn câu ───────────────► QUESTION_PREVIEW
+  └─ hết câu ───────────────► ENDED
+
+Từ QUESTION_PREVIEW/RUNNING/QUESTION_RESULT:
+  PAUSED ── tiếp tục ──► quay lại đúng pha và thời gian còn lại
 ```
 
-Web không tự quyết định điểm hay thứ hạng. Socket chỉ truyền thay đổi; Redis là
-nguồn sự thật và REST snapshot là cơ chế phục hồi sau mất kết nối.
+Backend sở hữu timer và lịch chuyển pha. Host không phải bấm nút để công bố đáp
+án. Khi tất cả người chơi đã trả lời, backend có thể kết thúc pha trả lời sớm;
+người không trả lời khi hết giờ nhận 0 điểm.
 
-## Vì sao chọn công nghệ
+Các chuyển pha dùng phase lock trong Redis để tránh hai timer hoặc hai request
+Host cùng chuyển trạng thái. Khi API khởi động lại hoặc client reconnect, REST
+snapshot và timestamp trong Redis phục hồi trạng thái quan sát được.
+
+## 3. Cách tính điểm
+
+Điểm chỉ do backend tính:
+
+```text
+sai hoặc không trả lời: 0
+đúng: max(100, 1000 - floor(tỉ_lệ_thời_gian × 10) × 100)
+câu cuối: điểm đúng × 2
+```
+
+- Trả lời đúng gần như ngay lập tức: 1000 điểm.
+- Điểm giảm theo các bậc 100 khi thời gian trôi qua.
+- Điểm sàn của một đáp án đúng trong thời hạn: 100.
+- Câu cuối có thể đạt tối đa 2000 điểm để tăng kịch tính.
+- `responseMs` được tính lại theo đồng hồ server; giá trị client chỉ mang tính
+  thông tin và không quyết định điểm.
+- Lua idempotency bảo đảm retry không cộng điểm lần hai.
+
+## 4. Bảng xếp hạng thời gian thực
+
+Redis Sorted Set là nguồn sự thật:
+
+- `ZADD`: thêm Player với điểm ban đầu bằng 0.
+- `ZINCRBY`: cộng điểm nguyên tử sau đáp án đầu tiên hợp lệ.
+- `ZREVRANGE ... WITHSCORES`: lấy Top N theo đúng thứ tự Redis.
+- `ZREVRANK`: lấy hạng cá nhân.
+- Team leaderboard dùng ZSET riêng khi Team mode bật.
+
+Frontend không tải toàn bộ điểm để tự `sort()`. Socket.IO chỉ thông báo thay đổi;
+REST snapshot là cơ chế đồng bộ lại sau mất kết nối.
+
+## 5. Kiến trúc
+
+```text
+React SPA
+├─ Public library / Auth / Settings
+├─ Quiz Editor / AI Creator / Reports
+├─ Host Console
+└─ Player Game
+        │ REST + Socket.IO
+        ▼
+Express API
+├─ Zod validation
+├─ Host JWT / Player JWT / ownership guards
+├─ Game state machine + timers + phase locks
+├─ Ollama/PDF generator + local fallback
+├─ SMTP email verification
+└─ Multilingual nickname moderation
+        │
+        ▼
+Redis 7.4
+├─ HASH: User, Quiz, Question, Session, Player, Answer
+├─ SET: chỉ mục, thành viên phòng, answer keys
+├─ LIST: thứ tự câu hỏi
+├─ STRING + TTL: PIN, OTP, cooldown, rate limit, phase lock
+├─ ZSET: Player/Team leaderboard
+└─ STREAM: sự kiện join/answer phục vụ audit và analytics
+```
+
+## 6. Vì sao chọn công nghệ
 
 | Công nghệ          | Vai trò       | Lý do                                                         |
 | ------------------ | ------------- | ------------------------------------------------------------- |
-| React + TypeScript | Giao diện SPA | Thành phần tái sử dụng, type safety và phản hồi realtime tốt. |
-| Vite               | Dev/build web | Khởi động nhanh, cấu hình gọn cho đồ án.                      |
-| Express            | REST API      | Dễ trình bày, hệ sinh thái lớn, phù hợp CRUD.                 |
-| Socket.IO          | Realtime      | Room, reconnect và fallback tốt cho lobby/game/leaderboard.   |
-| Redis              | CSDL chính    | ZSET duy trì thứ tự, thao tác nguyên tử và độ trễ thấp.       |
-| ioredis            | Redis client  | Hỗ trợ pipeline, transaction và Lua rõ ràng.                  |
-| Zod                | Validation    | Một schema kiểm tra đầu vào có thể đọc và test.               |
-| JWT + bcrypt       | Xác thực      | Tách host account và player token ngắn hạn.                   |
-| Vitest + Supertest | Test          | Nhanh, phù hợp TypeScript và kiểm thử API.                    |
-| Docker Compose     | Môi trường    | Chạy Redis/RedisInsight đồng nhất trên mọi máy.               |
-| Multer             | Tải PDF       | Xử lý multipart và giới hạn tệp ngay tại Express.             |
-| pdf-parse          | Đọc PDF       | Trích văn bản để tạo câu hỏi có căn cứ tài liệu.              |
-| Ollama + Qwen 2.5  | AI cục bộ     | Không cần API key, dữ liệu ở máy và hỗ trợ tiếng Việt tốt.    |
-| JSON Schema + Zod  | Output AI     | Buộc cấu trúc 4 đáp án và chặn dữ liệu AI sai định dạng.      |
+| React + TypeScript | SPA           | Component tái sử dụng, type safety, cập nhật realtime rõ ràng |
+| React Router 7     | Điều hướng    | Data Router hỗ trợ chặn rời route trong phòng đang hoạt động  |
+| Vite               | Dev/build web | Khởi động và build nhanh, cấu hình gọn                        |
+| Express            | REST API      | Dễ trình bày, middleware phong phú, phù hợp đồ án             |
+| Socket.IO          | Realtime      | Room, reconnect, event và fallback tốt                        |
+| Redis + ioredis    | CSDL chính    | ZSET, TTL, transaction, pipeline và Lua độ trễ thấp           |
+| Zod                | Validation    | Schema đọc được, dùng chung cho runtime và kiểm thử           |
+| JWT + bcrypt       | Xác thực      | Tách Host/Player, mật khẩu không lưu plaintext                |
+| Nodemailer         | Email         | Hỗ trợ SMTP Gmail, Outlook, Mailgun, Brevo và provider khác   |
+| Multer + pdf-parse | PDF           | Giới hạn upload và trích văn bản ở backend                    |
+| Ollama + Qwen 2.5  | AI cục bộ     | Không cần API key, dữ liệu ở máy, phù hợp tiếng Việt          |
+| JSON Schema + Zod  | Output AI     | Giảm lỗi cấu trúc và chặn quiz không hợp lệ                   |
+| @2toad/profanity   | Moderation    | Từ điển đa ngôn ngữ và Unicode word boundaries                |
+| Vitest + Supertest | Test          | Test nhanh cho hàm, API và lỗi hồi quy                        |
+| Docker Compose     | Môi trường    | Redis/RedisInsight đồng nhất giữa các máy                     |
 
-## API chính
+## 7. API chính
 
-| Nhóm          | Endpoint tiêu biểu                                                 | Mục đích                  |
-| ------------- | ------------------------------------------------------------------ | ------------------------- |
-| Auth          | `POST /api/auth/register`, `POST /api/auth/login`                  | Tạo và xác thực Host      |
-| Quiz          | `GET/POST/PUT/DELETE /api/quizzes`                                 | Thư viện và CRUD quiz     |
-| Question      | `POST /api/quizzes/:id/questions`, `PUT/DELETE /api/questions/:id` | Quiz editor               |
-| Session       | `POST /api/sessions`, `PATCH /api/sessions/:id/settings`           | Tạo và chốt lobby         |
-| Player        | `POST /api/sessions/join`, `POST /api/sessions/:id/answers`        | Tham gia và trả lời       |
-| Host control  | `POST .../start`, `POST .../advance`, `POST .../end`               | Điều khiển trận           |
-| Result        | `GET .../leaderboard`, `GET .../report`                            | Xếp hạng và báo cáo       |
-| AI quiz       | `GET /api/ai/status`, `POST /api/ai/generate-quiz`                 | Kiểm tra AI và tạo quiz   |
-| Player result | `GET /api/sessions/:id/result`                                     | Kết quả cá nhân cuối game |
+| Nhóm     | Endpoint                                               | Mục đích                        |
+| -------- | ------------------------------------------------------ | ------------------------------- |
+| Health   | `GET /api/health`                                      | Kiểm tra API và Redis           |
+| Network  | `GET /api/meta/network`                                | Chọn URL LAN/public cho QR      |
+| Email    | `POST /api/auth/email-verification/request`            | Gửi mã đăng ký                  |
+| Auth     | `POST /api/auth/register`                              | Tạo Host sau khi xác minh email |
+| Auth     | `POST /api/auth/login`                                 | Đăng nhập username hoặc email   |
+| Password | `POST /api/auth/forgot-password`                       | Gửi mã đặt lại mật khẩu         |
+| Password | `POST /api/auth/reset-password`                        | Xác minh mã và đổi mật khẩu     |
+| Profile  | `GET/PUT /api/auth/me`                                 | Đọc/cập nhật tài khoản          |
+| Quiz     | `GET/POST /api/quizzes`                                | Danh sách và tạo quiz           |
+| Quiz     | `GET/PUT/DELETE /api/quizzes/:id`                      | Chi tiết và CRUD quiz           |
+| Question | `POST /api/quizzes/:id/questions`                      | Thêm câu hỏi                    |
+| Question | `PUT/DELETE /api/questions/:id`                        | Sửa/xóa câu hỏi                 |
+| AI       | `GET /api/ai/status`                                   | Kiểm tra Ollama/model           |
+| AI       | `POST /api/ai/generate-quiz`                           | Tạo quiz từ chủ đề/PDF          |
+| Session  | `POST /api/sessions`                                   | Tạo phòng và PIN                |
+| Session  | `GET /api/sessions/:id`                                | Snapshot theo quyền Host/Player |
+| Join     | `GET /api/sessions/pin/:pin`                           | Tra cứu phòng công khai         |
+| Join     | `POST /api/sessions/join`                              | Tạo Player và player JWT        |
+| Settings | `PATCH /api/sessions/:id/settings`                     | Chốt thiết lập lobby            |
+| Host     | `POST .../start`, `.../pause`, `.../resume`            | Điều khiển state machine        |
+| Host     | `POST .../skip`, `.../end`, `.../cancel`, `.../replay` | Quản lý vòng đời phòng          |
+| Answer   | `POST /api/sessions/:id/answers`                       | Gửi đáp án một lần              |
+| Result   | `GET .../leaderboard`, `.../result`, `.../report`      | Hạng và báo cáo                 |
 
-## An toàn và tính đúng
+## 8. Xác thực email và tài khoản
 
-- Mật khẩu băm bằng bcrypt; Host/Player dùng JWT khác loại và thời hạn.
-- Ownership guard chặn sửa quiz/phòng không thuộc Host; đáp án editor không xuất
-  hiện ở API công khai.
-- Khi bật ẩn leaderboard, Player/Public không lấy được bảng điểm hoặc rank qua
-  REST lẫn Socket; Host vẫn quan sát được để điều khiển.
-- Lua bảo đảm một Player chỉ được ghi một Answer cho mỗi câu, kể cả khi retry.
-- Tất cả payload ghi quan trọng được Zod kiểm tra; Helmet và CORS bảo vệ lớp HTTP.
+- Username và email có chỉ mục Redis riêng, không được trùng.
+- Login tự chọn tra cứu username hoặc email theo định dạng identifier.
+- Mật khẩu được băm bằng bcrypt.
+- Mã email 6 số được băm SHA-256 cùng purpose/email/JWT secret trước khi lưu.
+- Cooldown gửi lại là 60 giây.
+- Mã đăng ký và mã reset có TTL cấu hình riêng.
+- Sau 5 lần nhập mã sai, mã bị hủy.
+- Forgot-password trả thông báo giống nhau dù email tồn tại hay không để hạn chế
+  dò tài khoản.
+- Development có thể trả `devCode`; production phải tắt
+  `EMAIL_DEV_CODE_ENABLED` và cấu hình SMTP thật.
 
-## Dữ liệu demo và kiểm thử nghiệm thu
+## 9. Kiểm duyệt biệt danh
 
-- Seed: `60 Player + 12 Quiz + 44 Question + 4 Session + 12 Answer = 132`.
-- Unit test: điểm sai bằng 0, điểm tốc độ, tắt speed scoring, điểm sàn và chuẩn
-  hóa câu trả lời văn bản.
-- Integration smoke test: Redis PONG; đăng nhập; tạo/cấu hình phòng; join; start;
-  answer; ZSET Top 1; reveal; end; report; kiểm tra 403 và không rò đáp án.
-- Visual QA: desktop 1440 px và breakpoint mobile 500 px bằng Chrome headless.
-- Ollama smoke test: gửi PDF mẫu, sinh đủ 3 câu hỏi bằng `qwen2.5:3b`, xác nhận
-  `provider=OLLAMA` rồi xóa quiz thử khỏi Redis.
+- Chạy ở backend trước khi ghi Player, vì client-side validation có thể bị bỏ qua.
+- Áp dụng cho mọi phòng, kể cả dữ liệu phòng cũ có `safeNames=false`.
+- Hỗ trợ Arabic, Chinese, English, French, German, Hindi, Italian, Japanese,
+  Korean, Portuguese, Russian, Spanish và danh sách tiếng Việt bổ sung.
+- Chuẩn hóa NFKC/NFKD, dấu tiếng Việt, chữ hoa/thường, leetspeak, ký tự Cyrillic/
+  Greek tương tự Latin, dấu phân cách, ký tự vô hình và lặp ký tự.
+- Dùng whole-word matching và kiểm thử tên hợp lệ để giảm false positive.
+- Biệt danh vi phạm nhận HTTP 400 `UNSAFE_NICKNAME`; hệ thống không tự đổi tên rồi
+  cho vào phòng.
+- Player vi phạm đã tồn tại từ bản cũ bị loại khi reconnect hoặc tải snapshot.
 
-## Quy tắc sở hữu dữ liệu
+## 10. An toàn và tính đúng
 
-Redis ZSET là nguồn sự thật duy nhất của thứ hạng. Không truy xuất toàn bộ điểm
-rồi gọi `sort()` trong Node.js hoặc frontend. Backend chỉ ánh xạ metadata theo
-đúng thứ tự Redis trả về.
+- Helmet, CORS allowlist, giới hạn JSON/upload và Zod bảo vệ lớp HTTP.
+- Ownership guard chặn Host sửa quiz/phòng của người khác.
+- API công khai không trả đáp án đúng hoặc lời giải của quiz.
+- Player JWT gắn với đúng `sessionId`; Host JWT và Player JWT khác loại.
+- Join dùng Lua để kiểm tra trạng thái phòng, sức chứa, trùng nickname và ghi Player
+  nguyên tử.
+- Answer dùng Lua để idempotent, ghi Answer, cộng ZSET và Stream trong một thao tác.
+- Session/PIN/player/leaderboard có TTL được gia hạn trong quá trình hoạt động.
+- Mỗi tab dùng `sessionStorage`, không dùng chung đáp án qua `localStorage`.
+- Modal Có/Không thay hộp trình duyệt cho thao tác nội bộ; `beforeunload` bảo vệ
+  reload/đóng tab. Trình duyệt quyết định nội dung cảnh báo `beforeunload`.
+
+## 11. Giao diện và khả năng sử dụng
+
+- Thiết kế màu xanh biển nhẹ, không dùng tím làm màu thương hiệu chính.
+- Dark mode có surface/text/border riêng để giữ tương phản.
+- Tiếng Việt và tiếng Anh được dịch ở navbar, auth, dashboard, editor, AI, lobby,
+  Host Console, Player Game, report và modal.
+- Navbar có tìm kiếm quiz, nhập PIN, đổi ngôn ngữ và đổi theme.
+- Danh mục có icon vector, trạng thái hover/active và bố cục responsive.
+- Hộp thoại xác nhận hỗ trợ click ngoài, phím `Esc`, focus mặc định ở “Không”.
+- QR ưu tiên IPv4 LAN hoặc `PUBLIC_WEB_URL`; giao diện giải thích yêu cầu cùng Wi-Fi.
+
+## 12. Dữ liệu demo và kiểm thử nghiệm thu
+
+### Lệnh kiểm tra
+
+```powershell
+npm run lint
+npm test
+npm run build
+Invoke-RestMethod http://localhost:4000/api/health
+```
+
+### Phạm vi kiểm thử tự động
+
+- Điểm sai bằng 0, điểm tốc độ theo bậc, điểm sàn và câu cuối nhân đôi.
+- Chuẩn hóa câu trả lời văn bản.
+- Generator từ chủ đề/PDF, Ollama structured output và fallback.
+- Bộ lọc nickname: tên hợp lệ, nhiều ngôn ngữ, tiếng Việt có dấu/không dấu,
+  leetspeak, dấu phân cách và ký tự vô hình.
+- API/web type-check và production bundle.
+
+### Smoke test thủ công khuyến nghị
+
+1. Đăng ký bằng mã email; đăng nhập bằng username và email.
+2. Quên mật khẩu, nhập mã và xác nhận mật khẩu mới.
+3. Tạo/publish quiz hoặc tạo từ PDF qua Ollama.
+4. Tạo lobby, quét QR bằng điện thoại cùng Wi-Fi.
+5. Mở hai tab Player, dùng hai biệt danh/avatar và xác nhận đáp án độc lập.
+6. Kiểm tra đếm ngược, preview 5 giây, timer, điểm tốc độ và câu cuối nhân đôi.
+7. Tạm dừng/tiếp tục, bỏ qua, kết thúc, replay và báo cáo CSV.
+8. Thử biệt danh không an toàn và xác nhận API từ chối.
+9. Thử chuyển route/reload ở Host và Player để xác nhận cảnh báo rời phòng.
+10. Kiểm tra theme và cả hai ngôn ngữ trên desktop/mobile.
+
+## 13. Giới hạn và hướng mở rộng
+
+- Từ điển moderation không thể bao phủ vĩnh viễn mọi tiếng lóng; danh sách tiếng
+  Việt cần được cập nhật dựa trên log moderation và phản hồi thực tế.
+- Web Audio hiện tạo nhạc nền tổng hợp, không tải tệp nhạc có bản quyền.
+- Production nên dùng HTTPS, secret mạnh, SMTP thật, Redis có auth/TLS và reverse
+  proxy giới hạn request.
+- Có thể mở rộng bằng LMS/SSO, email kết quả, dashboard analytics, moderation log,
+  object storage cho media và Redis Cluster.

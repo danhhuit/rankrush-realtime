@@ -1,10 +1,19 @@
 export type QuizStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";
 export type QuestionType = "SINGLE_CHOICE" | "TRUE_FALSE" | "TEXT";
 export type SessionState =
-  "LOBBY" | "RUNNING" | "QUESTION_RESULT" | "ENDED" | "CANCELLED";
+  | "LOBBY"
+  | "GAME_COUNTDOWN"
+  | "QUESTION_PREVIEW"
+  | "RUNNING"
+  | "QUESTION_RESULT"
+  | "PAUSED"
+  | "ENDED"
+  | "CANCELLED";
+export type PlayPhase = "QUESTION_PREVIEW" | "RUNNING" | "QUESTION_RESULT";
 
 export interface User {
   id: string;
+  username?: string;
   email: string;
   displayName: string;
   passwordHash: string;
@@ -49,6 +58,7 @@ export interface Question {
   explanation: string;
 }
 export interface SessionSettings {
+  autoAdvance: boolean;
   teamMode: boolean;
   hideLeaderboard: boolean;
   safeNames: boolean;
@@ -64,6 +74,8 @@ export interface GameSession {
   state: SessionState;
   currentQuestionIndex: number;
   questionStartedAt: string;
+  pausedState?: PlayPhase;
+  pausedRemainingMs?: number;
   questionOrder: string[];
   settings: SessionSettings;
   createdAt: string;

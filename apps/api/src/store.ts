@@ -1,5 +1,6 @@
 import { nanoid } from "nanoid";
 import { key, config } from "./config.js";
+import { isUnsafeNickname } from "./nickname-filter.js";
 import { redis } from "./redis.js";
 import type {
   GameSession,
@@ -34,9 +35,11 @@ function decode<T>(hash: Record<string, string>): T {
     }
   for (const field of [
     "currentQuestionIndex",
+    "pausedRemainingMs",
     "timeLimitSec",
     "basePoints",
     "order",
+    "popularity",
   ])
     if (field in out) out[field] = Number(out[field]);
   for (const field of ["online"])
@@ -48,7 +51,17 @@ export const keys = {
   users: key("users"),
   user: (id: string) => key("user", id),
   userEmail: (email: string) => key("user-email", email.toLowerCase()),
+  userUsername: (username: string) =>
+    key("user-username", username.toLowerCase()),
   passwordReset: (email: string) => key("password-reset", email.toLowerCase()),
+  emailVerification: (email: string) =>
+    key("email-verification", email.toLowerCase()),
+  emailCodeCooldown: (purpose: string, email: string) =>
+    key("email-code-cooldown", purpose, email.toLowerCase()),
+  emailCodeAttempts: (purpose: string, email: string) =>
+    key("email-code-attempts", purpose, email.toLowerCase()),
+  loginAttempts: (identifier: string) =>
+    key("login-attempts", identifier.toLowerCase()),
   quizzes: key("quizzes"),
   publicQuizzes: key("quizzes", "public"),
   userQuizzes: (id: string) => key("user", id, "quizzes"),
@@ -67,22 +80,37 @@ export const keys = {
     key("answer", `{${sid}}`, pid, qid),
   answers: (id: string) => key("session", `{${id}}`, "answers"),
   events: (id: string) => key("events", `{${id}}`),
+  phaseLock: (id: string) => key("session", `{${id}}`, "phase-lock"),
 };
 
 export async function createUser(user: User) {
-  const existing = await redis.get(keys.userEmail(user.email));
-  if (existing)
+  const normalizedUsername = user.username?.trim().toLowerCase();
+  const [emailOwner, usernameOwner] = await Promise.all([
+    redis.get(keys.userEmail(user.email)),
+    normalizedUsername
+      ? redis.get(keys.userUsername(normalizedUsername))
+      : Promise.resolve(null),
+  ]);
+  if (emailOwner)
     throw Object.assign(new Error("Email đã được sử dụng."), {
       status: 409,
       code: "EMAIL_EXISTS",
     });
-  await redis
+  if (usernameOwner)
+    throw Object.assign(new Error("Tên đăng nhập đã được sử dụng."), {
+      status: 409,
+      code: "USERNAME_EXISTS",
+    });
+  const normalizedUser = { ...user, username: normalizedUsername };
+  const tx = redis
     .multi()
-    .hset(keys.user(user.id), encode(user))
+    .hset(keys.user(user.id), encode(normalizedUser))
     .set(keys.userEmail(user.email), user.id)
-    .sadd(keys.users, user.id)
-    .exec();
-  return user;
+    .sadd(keys.users, user.id);
+  if (normalizedUsername)
+    tx.set(keys.userUsername(normalizedUsername), user.id);
+  await tx.exec();
+  return normalizedUser;
 }
 export async function getUser(id: string) {
   const h = await redis.hgetall(keys.user(id));
@@ -92,52 +120,107 @@ export async function getUserByEmail(email: string) {
   const id = await redis.get(keys.userEmail(email));
   return id ? getUser(id) : null;
 }
+export async function getUserByUsername(username: string) {
+  const normalized = username.trim().toLowerCase();
+  const id = await redis.get(keys.userUsername(normalized));
+  if (id) return getUser(id);
+  // Lazy migration for accounts created before usernames were introduced.
+  const ids = await redis.smembers(keys.users);
+  if (!ids.length) return null;
+  const pipe = redis.pipeline();
+  ids.forEach((userId) => pipe.hgetall(keys.user(userId)));
+  const rows = await pipe.exec();
+  const match = (rows ?? [])
+    .map(([, hash]) => decode<User>(hash as Record<string, string>))
+    .find(
+      (user) =>
+        user.username?.toLowerCase() === normalized ||
+        user.email.split("@")[0]?.toLowerCase() === normalized,
+    );
+  if (!match) return null;
+  await redis
+    .multi()
+    .set(keys.userUsername(normalized), match.id)
+    .hset(keys.user(match.id), "username", normalized)
+    .exec();
+  return { ...match, username: normalized };
+}
 
 export async function saveQuiz(quiz: Quiz) {
-  await redis
+  const tx = redis
     .multi()
     .hset(keys.quiz(quiz.id), encode(quiz))
     .sadd(keys.quizzes, quiz.id)
-    .sadd(keys.userQuizzes(quiz.ownerId), quiz.id)
-    .zadd(
-      keys.publicQuizzes,
-      quiz.status === "PUBLISHED" ? Date.parse(quiz.updatedAt) : 0,
-      quiz.id,
-    )
-    .exec();
+    .sadd(keys.userQuizzes(quiz.ownerId), quiz.id);
+  if (quiz.status === "PUBLISHED")
+    tx.zadd(keys.publicQuizzes, Date.parse(quiz.updatedAt), quiz.id);
+  else tx.zrem(keys.publicQuizzes, quiz.id);
+  await tx.exec();
   return quiz;
 }
 export async function getQuiz(id: string) {
   const h = await redis.hgetall(keys.quiz(id));
   return Object.keys(h).length ? decode<Quiz>(h) : null;
 }
-export async function listQuizzes(ownerId?: string) {
+export async function listQuizzes(
+  ownerId?: string,
+  options: {
+    query?: string;
+    category?: string;
+    offset?: number;
+    limit?: number;
+  } = {},
+) {
   const ids = ownerId
     ? await redis.smembers(keys.userQuizzes(ownerId))
-    : await redis.zrevrange(keys.publicQuizzes, 0, 99);
+    : await redis.zrevrange(keys.publicQuizzes, 0, -1);
   const pipe = redis.pipeline();
   ids.forEach((id) => pipe.hgetall(keys.quiz(id)));
   const result = await pipe.exec();
+  const query = options.query?.trim().toLocaleLowerCase("vi-VN") || "";
+  const category = options.category?.trim() || "";
+  const offset = Math.max(0, options.offset ?? 0);
+  const limit = Math.min(100, Math.max(1, options.limit ?? 100));
   const quizzes = (result ?? [])
     .map(([, h]) => decode<Quiz>(h as Record<string, string>))
-    .filter((q) => q.id && (ownerId || q.status === "PUBLISHED"));
-  const countPipe = redis.pipeline();
-  quizzes.forEach((quiz) => countPipe.llen(keys.quizQuestions(quiz.id)));
-  const counts = await countPipe.exec();
-  return quizzes.map((quiz, index) => ({
-    ...quiz,
-    questionCount: Number(counts?.[index]?.[1] ?? 0),
-  }));
+    .filter((q) => q.id && (ownerId || q.status === "PUBLISHED"))
+    .filter((q) => !category || q.category === category)
+    .filter(
+      (q) =>
+        !query ||
+        `${q.title} ${q.description} ${q.category} ${q.subcategory}`
+          .toLocaleLowerCase("vi-VN")
+          .includes(query),
+    );
+  if (ownerId) quizzes.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const page = quizzes.slice(offset, offset + limit);
+  return Promise.all(
+    page.map(async (quiz) => {
+      const questions = await listQuestions(quiz.id);
+      return {
+        ...quiz,
+        questionCount: questions.length,
+        averageTimeLimitSec: questions.length
+          ? Math.round(
+              questions.reduce(
+                (sum, question) => sum + question.timeLimitSec,
+                0,
+              ) / questions.length,
+            )
+          : 0,
+      };
+    }),
+  );
 }
-export async function deleteQuiz(id: string, ownerId: string) {
+export async function deleteQuiz(id: string) {
   const quiz = await getQuiz(id);
-  if (!quiz || quiz.ownerId !== ownerId) return false;
+  if (!quiz) return false;
   const qids = await redis.lrange(keys.quizQuestions(id), 0, -1);
   const tx = redis.multi();
   qids.forEach((qid) => tx.del(keys.question(qid)));
   tx.del(keys.quizQuestions(id), keys.quiz(id))
     .srem(keys.quizzes, id)
-    .srem(keys.userQuizzes(ownerId), id)
+    .srem(keys.userQuizzes(quiz.ownerId), id)
     .zrem(keys.publicQuizzes, id);
   await tx.exec();
   return true;
@@ -174,28 +257,37 @@ export async function deleteQuestion(id: string) {
   return true;
 }
 
-async function uniquePin() {
+async function reserveUniquePin(sessionId: string) {
   for (let i = 0; i < 20; i++) {
     const pin = String(Math.floor(100000 + Math.random() * 900000));
-    if (!(await redis.exists(keys.sessionPin(pin)))) return pin;
+    const reserved = await redis.set(
+      keys.sessionPin(pin),
+      sessionId,
+      "EX",
+      config.JOIN_CODE_TTL_SECONDS,
+      "NX",
+    );
+    if (reserved === "OK") return pin;
   }
   throw new Error("Không thể tạo PIN, vui lòng thử lại.");
 }
 export async function createSession(input: Omit<GameSession, "pin">) {
-  const session = { ...input, pin: await uniquePin() } as GameSession;
-  await redis
-    .multi()
-    .hset(keys.session(session.id), encode(session))
-    .sadd(keys.sessions, session.id)
-    .set(
-      keys.sessionPin(session.pin),
-      session.id,
-      "EX",
-      config.JOIN_CODE_TTL_SECONDS,
-    )
-    .expire(keys.session(session.id), config.SESSION_TTL_SECONDS)
-    .exec();
-  return session;
+  const session = {
+    ...input,
+    pin: await reserveUniquePin(input.id),
+  } as GameSession;
+  try {
+    await redis
+      .multi()
+      .hset(keys.session(session.id), encode(session))
+      .sadd(keys.sessions, session.id)
+      .expire(keys.session(session.id), config.SESSION_TTL_SECONDS)
+      .exec();
+    return session;
+  } catch (error) {
+    await redis.del(keys.sessionPin(session.pin));
+    throw error;
+  }
 }
 export async function getSession(id: string) {
   const h = await redis.hgetall(keys.session(id));
@@ -210,87 +302,134 @@ export async function listSessions(hostId?: string) {
   const pipeline = redis.pipeline();
   ids.forEach((id) => pipeline.hgetall(keys.session(id)));
   const rows = await pipeline.exec();
-  return (rows ?? [])
+  const decoded = (rows ?? [])
     .map(([, hash]) => decode<GameSession>(hash as Record<string, string>))
-    .filter((session) => session.id && (!hostId || session.hostId === hostId))
+    .filter((session) => session.id);
+  const liveIds = new Set(decoded.map((session) => session.id));
+  const staleIds = ids.filter((id) => !liveIds.has(id));
+  if (staleIds.length) await redis.srem(keys.sessions, ...staleIds);
+  return decoded
+    .filter((session) => !hostId || session.hostId === hostId)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 export async function updateSession(id: string, patch: Partial<GameSession>) {
-  await redis.hset(keys.session(id), encode(patch));
+  const current = await getSession(id);
+  if (!current) return null;
+  const pin = patch.pin || current.pin;
+  const tx = redis
+    .multi()
+    .hset(keys.session(id), encode(patch))
+    .expire(keys.session(id), config.SESSION_TTL_SECONDS);
+  if (patch.state === "ENDED" || patch.state === "CANCELLED")
+    tx.del(keys.sessionPin(pin));
+  else tx.expire(keys.sessionPin(pin), config.JOIN_CODE_TTL_SECONDS);
+  await tx.exec();
   return getSession(id);
 }
 
-const safeAdjectives = [
-  "Nhanh",
-  "Thông Minh",
-  "Dũng Cảm",
-  "Tỏa Sáng",
-  "May Mắn",
-  "Bền Bỉ",
-];
-const safeAnimals = ["Cáo", "Hổ", "Gấu", "Cú", "Rái Cá", "Đại Bàng", "Cá Heo"];
+const joinSessionLua = `
+local ttl = tonumber(ARGV[9])
+if redis.call('HGET', KEYS[1], 'state') ~= 'LOBBY' then return 3 end
+if redis.call('SCARD', KEYS[2]) >= tonumber(ARGV[1]) then return 1 end
+if redis.call('HEXISTS', KEYS[3], ARGV[2]) == 1 then return 2 end
+redis.call('HSET', KEYS[4], 'id', ARGV[3], 'sessionId', ARGV[4], 'nickname', ARGV[5], 'avatar', ARGV[6], 'country', '', 'team', ARGV[7], 'joinedAt', ARGV[8], 'online', 'true')
+redis.call('SADD', KEYS[2], ARGV[3])
+redis.call('HSET', KEYS[3], ARGV[2], ARGV[3])
+redis.call('ZADD', KEYS[5], 0, ARGV[3])
+if ARGV[7] ~= '' then redis.call('ZADD', KEYS[7], 0, ARGV[7]) end
+redis.call('XADD', KEYS[6], 'MAXLEN', '~', 5000, '*', 'type', 'PLAYER_JOINED', 'playerId', ARGV[3], 'at', ARGV[8])
+for i = 1, #KEYS do
+  if redis.call('EXISTS', KEYS[i]) == 1 then redis.call('EXPIRE', KEYS[i], ttl) end
+end
+return 0
+`;
 export async function joinSession(
   session: GameSession,
   input: Pick<Player, "nickname" | "avatar" | "country" | "team">,
 ) {
-  if (session.state !== "LOBBY")
-    throw Object.assign(new Error("Phòng không còn nhận người chơi."), {
-      status: 409,
-      code: "SESSION_NOT_JOINABLE",
-    });
-  if (
-    (await redis.scard(keys.sessionPlayers(session.id))) >=
-    config.MAX_PLAYERS_PER_SESSION
-  )
-    throw Object.assign(new Error("Phòng đã đầy."), {
-      status: 409,
-      code: "SESSION_FULL",
-    });
-  let nickname = input.nickname.trim();
-  if (session.settings.safeNames)
-    nickname = `${safeAdjectives[Math.floor(Math.random() * safeAdjectives.length)]} ${safeAnimals[Math.floor(Math.random() * safeAnimals.length)]}`;
-  const normalized = nickname.toLocaleLowerCase("vi-VN");
-  if (await redis.hexists(keys.sessionNicknames(session.id), normalized))
-    throw Object.assign(new Error("Tên này đã có trong phòng."), {
-      status: 409,
-      code: "NICKNAME_EXISTS",
-    });
-  const player: Player = {
-    id: nanoid(12),
-    sessionId: session.id,
-    nickname,
-    avatar: input.avatar || "rocket",
-    country: input.country || "VN",
-    team: input.team || "",
-    joinedAt: new Date().toISOString(),
-    online: true,
-  };
-  const tx = redis
-    .multi()
-    .hset(keys.player(session.id, player.id), encode(player))
-    .sadd(keys.sessionPlayers(session.id), player.id)
-    .hset(keys.sessionNicknames(session.id), normalized, player.id)
-    .zadd(keys.leaderboard(session.id), 0, player.id)
-    .xadd(
-      keys.events(session.id),
-      "MAXLEN",
-      "~",
-      5000,
-      "*",
-      "type",
-      "PLAYER_JOINED",
-      "playerId",
-      player.id,
-      "at",
-      player.joinedAt,
+  const requestedNickname = input.nickname.trim();
+  if (isUnsafeNickname(requestedNickname)) {
+    throw Object.assign(
+      new Error(
+        "Biệt danh chứa nội dung không phù hợp. Vui lòng chọn tên khác.",
+      ),
+      { status: 400, code: "UNSAFE_NICKNAME" },
     );
-  if (player.team) tx.zadd(keys.teamboard(session.id), 0, player.team);
-  await tx.exec();
-  return player;
+  }
+  const nickname = requestedNickname;
+  {
+    const player: Player = {
+      id: nanoid(12),
+      sessionId: session.id,
+      nickname,
+      avatar: input.avatar || "human|1|0|0|0",
+      country: "",
+      team: input.team || "",
+      joinedAt: new Date().toISOString(),
+      online: true,
+    };
+    const result = Number(
+      await redis.eval(
+        joinSessionLua,
+        7,
+        keys.session(session.id),
+        keys.sessionPlayers(session.id),
+        keys.sessionNicknames(session.id),
+        keys.player(session.id, player.id),
+        keys.leaderboard(session.id),
+        keys.events(session.id),
+        keys.teamboard(session.id),
+        String(config.MAX_PLAYERS_PER_SESSION),
+        nickname.toLocaleLowerCase("vi-VN"),
+        player.id,
+        session.id,
+        player.nickname,
+        player.avatar,
+        player.team,
+        player.joinedAt,
+        String(config.SESSION_TTL_SECONDS),
+      ),
+    );
+    if (result === 0) return player;
+    if (result === 1)
+      throw Object.assign(new Error("Phòng đã đầy."), {
+        status: 409,
+        code: "SESSION_FULL",
+      });
+    if (result === 3)
+      throw Object.assign(new Error("Phòng không còn nhận người chơi."), {
+        status: 409,
+        code: "SESSION_NOT_JOINABLE",
+      });
+    if (result === 2)
+      throw Object.assign(new Error("Tên này đã có trong phòng."), {
+        status: 409,
+        code: "NICKNAME_EXISTS",
+      });
+  }
+  throw Object.assign(new Error("Không thể tham gia phòng."), {
+    status: 500,
+    code: "JOIN_FAILED",
+  });
 }
 export async function getPlayer(sessionId: string, playerId: string) {
   const h = await redis.hgetall(keys.player(sessionId, playerId));
   return Object.keys(h).length ? decode<Player>(h) : null;
+}
+export async function removePlayer(sessionId: string, playerId: string) {
+  const player = await getPlayer(sessionId, playerId);
+  if (!player) return false;
+  await redis
+    .multi()
+    .srem(keys.sessionPlayers(sessionId), player.id)
+    .hdel(
+      keys.sessionNicknames(sessionId),
+      player.nickname.toLocaleLowerCase("vi-VN"),
+    )
+    .zrem(keys.leaderboard(sessionId), player.id)
+    .del(keys.player(sessionId, player.id))
+    .exec();
+  return true;
 }
 export async function listPlayers(sessionId: string) {
   const ids = await redis.smembers(keys.sessionPlayers(sessionId));
@@ -326,7 +465,7 @@ export async function getLeaderboard(
       rank: index + 1,
       playerId: row.id,
       nickname: pl.nickname || "Người chơi",
-      avatar: pl.avatar || "rocket",
+      avatar: pl.avatar || "human|1|0|0|0",
       country: pl.country || "",
       team: pl.team || "",
       score: row.score,
@@ -361,7 +500,9 @@ export async function getTeamLeaderboard(sessionId: string) {
 }
 
 const submitLua = `
+local ttl = tonumber(ARGV[11])
 if redis.call('EXISTS', KEYS[1]) == 1 then
+  for i = 1, #KEYS do if redis.call('EXISTS', KEYS[i]) == 1 then redis.call('EXPIRE', KEYS[i], ttl) end end
   return {0, redis.call('HGET', KEYS[1], 'awardedPoints'), redis.call('ZSCORE', KEYS[3], ARGV[1])}
 end
 redis.call('HSET', KEYS[1], 'id', ARGV[2], 'sessionId', ARGV[3], 'playerId', ARGV[1], 'questionId', ARGV[4], 'selectedAnswer', ARGV[5], 'isCorrect', ARGV[6], 'responseMs', ARGV[7], 'awardedPoints', ARGV[8], 'submittedAt', ARGV[9])
@@ -369,6 +510,7 @@ redis.call('SADD', KEYS[2], KEYS[1])
 local newScore = redis.call('ZINCRBY', KEYS[3], ARGV[8], ARGV[1])
 if ARGV[10] ~= '' then redis.call('ZINCRBY', KEYS[4], ARGV[8], ARGV[10]) end
 redis.call('XADD', KEYS[5], 'MAXLEN', '~', 5000, '*', 'type', 'ANSWER_SUBMITTED', 'playerId', ARGV[1], 'questionId', ARGV[4], 'points', ARGV[8], 'at', ARGV[9])
+for i = 1, #KEYS do if redis.call('EXISTS', KEYS[i]) == 1 then redis.call('EXPIRE', KEYS[i], ttl) end end
 return {1, ARGV[8], newScore}
 `;
 export async function submitAnswerAtomic(input: {
@@ -390,12 +532,14 @@ export async function submitAnswerAtomic(input: {
   const now = new Date().toISOString();
   const result = (await redis.eval(
     submitLua,
-    5,
+    7,
     answerKey,
     keys.answers(input.sessionId),
     keys.leaderboard(input.sessionId),
     keys.teamboard(input.sessionId),
     keys.events(input.sessionId),
+    keys.session(input.sessionId),
+    keys.player(input.sessionId, input.playerId),
     input.playerId,
     id,
     input.sessionId,
@@ -406,6 +550,7 @@ export async function submitAnswerAtomic(input: {
     String(input.awardedPoints),
     now,
     input.team,
+    String(config.SESSION_TTL_SECONDS),
   )) as [number, string, string];
   return {
     created: Number(result[0]) === 1,

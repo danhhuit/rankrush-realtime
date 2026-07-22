@@ -12,6 +12,7 @@ export type Quiz = {
   subcategory?: string;
   popularity?: number;
   questionCount?: number;
+  averageTimeLimitSec?: number;
   coverColor: string;
   ownerId: string;
   status: "DRAFT" | "PUBLISHED" | "ARCHIVED";
@@ -34,6 +35,7 @@ export type Question = {
   explanation: string;
 };
 export type SessionSettings = {
+  autoAdvance: boolean;
   teamMode: boolean;
   hideLeaderboard: boolean;
   safeNames: boolean;
@@ -46,9 +48,19 @@ export type Session = {
   quizId: string;
   hostId: string;
   pin: string;
-  state: "LOBBY" | "RUNNING" | "QUESTION_RESULT" | "ENDED" | "CANCELLED";
+  state:
+    | "LOBBY"
+    | "GAME_COUNTDOWN"
+    | "QUESTION_PREVIEW"
+    | "RUNNING"
+    | "QUESTION_RESULT"
+    | "PAUSED"
+    | "ENDED"
+    | "CANCELLED";
   currentQuestionIndex: number;
   questionStartedAt: string;
+  pausedState?: "QUESTION_PREVIEW" | "RUNNING" | "QUESTION_RESULT";
+  pausedRemainingMs?: number;
   questionOrder: string[];
   settings: SessionSettings;
   createdAt: string;
@@ -87,6 +99,11 @@ export type Snapshot = {
     Question,
     "id" | "type" | "prompt" | "options" | "timeLimitSec" | "order"
   >;
+  revealedQuestion?: {
+    correctOptionId: string;
+    acceptedAnswers: string[];
+    explanation: string;
+  } | null;
   selfRank?: { score: number; rank: number; ascendingRank: number } | null;
 };
 
