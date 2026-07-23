@@ -2843,3 +2843,131 @@ html[data-theme="dark"] .countdown::before {
     justify-self: start;
   }
 }
+
+/* Added per user UX requests */
+.preference-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.language-control .language-flag {
+  font-size: 16px;
+  line-height: 1;
+}
+.theme-control-button {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  border-radius: 20px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.theme-control-button:hover {
+  background: var(--line);
+}
+.theme-control-button svg {
+  width: 16px;
+  height: 16px;
+}
+.header-profile-menu {
+  position: relative;
+}
+.header-avatar {
+  background: var(--purple);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+.profile-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+  box-shadow: var(--shadow);
+  z-index: 50;
+}
+.profile-dropdown a,
+.profile-dropdown button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  color: var(--ink);
+  font-size: 14px;
+  text-decoration: none;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  border-radius: 6px;
+  text-align: left;
+  width: 100%;
+}
+.profile-dropdown a:hover,
+.profile-dropdown button:hover {
+  background: var(--line);
+}
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  margin-top: -8px;
+  margin-bottom: 16px;
+  cursor: pointer;
+  font-weight: normal;
+}
+.checkbox-label input[type="checkbox"] {
+  margin: 0;
+  cursor: pointer;
+}
+
+/* Admin pagination styles */
+.admin-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+  margin-top: 16px;
+}
+.admin-pagination button {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s;
+  color: var(--ink);
+}
+.admin-pagination button:hover:not(:disabled) {
+  background: var(--line);
+}
+.admin-pagination button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.admin-pagination span {
+  font-size: 14px;
+  color: var(--muted);
+}

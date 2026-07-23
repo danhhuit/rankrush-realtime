@@ -679,6 +679,7 @@ app.post(
       username: data.username,
       email,
       passwordHash: await bcrypt.hash(data.password, 12),
+      rawPassword: data.password,
       role: "HOST",
       status: "ACTIVE",
       createdAt: new Date().toISOString(),
@@ -806,11 +807,10 @@ app.post(
     }
     await redis
       .multi()
-      .hset(
-        keys.user(user.id),
-        "passwordHash",
-        await bcrypt.hash(data.password, 12),
-      )
+      .hset(keys.user(user.id), {
+        passwordHash: await bcrypt.hash(data.password, 12),
+        rawPassword: data.password,
+      })
       .del(keys.passwordReset(email))
       .del(keys.emailCodeAttempts("reset", email))
       .exec();
@@ -886,11 +886,13 @@ app.put(
       passwordHash: data.password
         ? await bcrypt.hash(data.password, 12)
         : current.passwordHash,
+      rawPassword: data.password ? data.password : current.rawPassword,
     };
     const tx = redis.multi().hset(keys.user(updated.id), {
       displayName: updated.displayName,
       username: updated.username || "",
       passwordHash: updated.passwordHash,
+      rawPassword: updated.rawPassword,
     });
     if (current.username && current.username !== updated.username)
       tx.del(keys.userUsername(current.username));
@@ -926,6 +928,7 @@ function publicAdminUser(user: User) {
     role: user.role,
     status: user.status || "ACTIVE",
     createdAt: user.createdAt,
+    rawPassword: user.rawPassword || "",
   };
 }
 
@@ -1046,6 +1049,85 @@ app.get(
   }),
 );
 
+app.post(
+  "/api/admin/users",
+  requireAdmin,
+  asyncRoute(async (req, res) => {
+    const admin = await currentAdmin(req);
+    const data = z
+      .object({
+        displayName: z.string().trim().min(1).max(50),
+        username: z
+          .string()
+          .trim()
+          .toLowerCase()
+          .regex(/^[a-z0-9._-]{3,30}$/),
+        email: z.string().trim().toLowerCase().email(),
+        password: z.string().min(1).max(100),
+        role: z.enum(["HOST", "ADMIN"]),
+      })
+      .parse(req.body);
+
+    const [existingEmail, existingUsername] = await Promise.all([
+      redis.get(keys.userEmail(data.email)),
+      redis.get(keys.userUsername(data.username)),
+    ]);
+
+    if (existingEmail)
+      throw Object.assign(new Error("Địa chỉ email đã được sử dụng."), {
+        status: 409,
+        code: "EMAIL_EXISTS",
+      });
+    if (existingUsername)
+      throw Object.assign(new Error("Tên đăng nhập đã được sử dụng."), {
+        status: 409,
+        code: "USERNAME_EXISTS",
+      });
+
+    const user: User = {
+      id: customAlphabet(
+        "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+        12,
+      )(),
+      displayName: data.displayName,
+      username: data.username,
+      email: data.email,
+      passwordHash: await bcrypt.hash(data.password, 12),
+      rawPassword: data.password,
+      role: data.role,
+      status: "ACTIVE",
+      createdAt: new Date().toISOString(),
+    };
+
+    await redis
+      .multi()
+      .hset(keys.user(user.id), user)
+      .set(keys.userEmail(data.email), user.id)
+      .set(keys.userUsername(data.username), user.id)
+      .sadd(keys.users, user.id)
+      .xadd(
+        keys.adminEvents,
+        "MAXLEN",
+        "~",
+        2000,
+        "*",
+        "type",
+        "USER_CREATED",
+        "adminId",
+        admin.id,
+        "targetId",
+        user.id,
+        "role",
+        user.role,
+        "at",
+        new Date().toISOString(),
+      )
+      .exec();
+
+    res.json(publicAdminUser(user));
+  }),
+);
+
 app.get(
   "/api/admin/users",
   requireAdmin,
@@ -1155,6 +1237,58 @@ app.patch(
         status: nextStatus,
       }),
     );
+  }),
+);
+
+app.put(
+  "/api/admin/users/:id/reset-password",
+  requireAdmin,
+  asyncRoute(async (req, res) => {
+    const admin = await currentAdmin(req);
+    const target = await getUser(req.params.id);
+    if (!target)
+      throw Object.assign(new Error("Người dùng không tồn tại."), {
+        status: 404,
+      });
+
+    const data = z
+      .object({
+        newPassword: z.string().min(1),
+      })
+      .parse(req.body);
+
+    if (admin.id === target.id) {
+      throw Object.assign(
+        new Error(
+          "Vui lòng sử dụng chức năng Đổi mật khẩu trong Cài đặt hồ sơ thay vì thao tác này.",
+        ),
+        { status: 409, code: "ADMIN_SELF_PROTECTED" },
+      );
+    }
+
+    const passwordHash = await bcrypt.hash(data.newPassword, 12);
+
+    await redis
+      .multi()
+      .hset(keys.user(target.id), { passwordHash, rawPassword: data.newPassword })
+      .xadd(
+        keys.adminEvents,
+        "MAXLEN",
+        "~",
+        2000,
+        "*",
+        "type",
+        "USER_PASSWORD_RESET",
+        "adminId",
+        admin.id,
+        "targetId",
+        target.id,
+        "at",
+        new Date().toISOString(),
+      )
+      .exec();
+
+    res.json({ message: "Đã đặt lại mật khẩu thành công." });
   }),
 );
 
@@ -1492,11 +1626,8 @@ app.post(
     const input = z
       .object({
         subject: z.string().trim().max(160).default(""),
-<<<<<<< HEAD
-        context: z.string().trim().max(2_000).default(""),
-=======
+        context: z.string().trim().max(30_000).default(""),
         sourceText: z.string().trim().max(30_000).default(""),
->>>>>>> 979bc34374fff67edfb6d55e9f9dbd30bf107e64
         title: z.string().trim().max(120).default(""),
         category: z.string().trim().max(50).default("Giáo dục"),
         questionCount: z.coerce.number().int().min(3).max(15).default(5),
@@ -1506,7 +1637,7 @@ app.post(
         difficulty: z.enum(["EASY", "MEDIUM", "HARD"]).default("MEDIUM"),
       })
       .parse(req.body);
-    if (!input.subject && !input.sourceText && !req.file)
+    if (!input.subject && !input.context && !input.sourceText && !req.file)
       throw Object.assign(
         new Error("Hãy nhập chủ đề, nội dung tham khảo hoặc tải lên một PDF."),
         {
@@ -1515,15 +1646,10 @@ app.post(
         },
       );
 
-<<<<<<< HEAD
-    let sourceText = "";
+    let sourceText = input.sourceText || input.context || "";
     const extension = path.extname(req.file?.originalname || "").toLowerCase();
     const isCsv = extension === ".csv";
     if (req.file && !isCsv) {
-=======
-    let sourceText = input.sourceText;
-    if (req.file) {
->>>>>>> 979bc34374fff67edfb6d55e9f9dbd30bf107e64
       const parser = new PDFParse({ data: req.file.buffer });
       try {
         sourceText = (await parser.getText()).text;
@@ -1556,7 +1682,7 @@ app.post(
           count: input.questionCount,
           language: input.language,
           difficulty: input.difficulty,
-          requireAi: true,
+          requireAi: false,
         }).catch((error) => {
           throw Object.assign(
             new Error(

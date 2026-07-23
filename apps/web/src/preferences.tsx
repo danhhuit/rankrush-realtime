@@ -196,6 +196,7 @@ type PreferencesValue = {
   locale: Locale;
   setLocale: (locale: Locale) => void;
   theme: Theme;
+  toggleTheme: () => void;
   themePreference: ThemePreference;
   setThemePreference: (theme: ThemePreference) => void;
   t: (key: MessageKey) => string;
@@ -204,14 +205,6 @@ type PreferencesValue = {
 
 const PreferencesContext = createContext<PreferencesValue | null>(null);
 
-<<<<<<< HEAD
-function initialTheme(): Theme {
-  const saved = localStorage.getItem("rr_theme");
-  if (saved === "light" || saved === "dark") return saved;
-  // Keep first render deterministic across browsers. Users can still opt in to
-  // dark mode with the theme button, and that explicit choice is persisted.
-  return "light";
-=======
 export function normalizeThemePreference(
   value: string | null,
 ): ThemePreference {
@@ -232,12 +225,13 @@ function getSystemTheme(): Theme {
   return window.matchMedia?.("(prefers-color-scheme: dark)").matches
     ? "dark"
     : "light";
->>>>>>> 979bc34374fff67edfb6d55e9f9dbd30bf107e64
 }
 
 function initialThemePreference(): ThemePreference {
   const saved = localStorage.getItem("rr_theme");
-  return normalizeThemePreference(saved);
+  const pref = normalizeThemePreference(saved);
+  // No "system" mode — default to light
+  return pref === "system" ? "light" : pref;
 }
 
 function initialLocale(): Locale {
@@ -284,6 +278,7 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
       locale,
       setLocale,
       theme,
+      toggleTheme: () => setThemePreference(theme === "dark" ? "light" : "dark"),
       themePreference,
       setThemePreference,
       t: (key) => messages[locale][key],

@@ -1284,3 +1284,75 @@ html[data-theme="dark"] .admin-error {
     grid-template-columns: 85px minmax(0, 1fr);
   }
 }
+
+/* Admin modal forms */
+.admin-modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin: 15px 0 25px;
+}
+.admin-modal-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--admin-text);
+}
+.admin-modal-form input, .admin-modal-form select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--admin-border);
+  border-radius: 8px;
+  background: var(--admin-surface);
+  color: var(--admin-text);
+  font-size: 14px;
+}
+.admin-modal-form input:focus, .admin-modal-form select:focus {
+  border-color: var(--admin-primary);
+  outline: none;
+  box-shadow: 0 0 0 2px rgb(101 71 238 / 12%);
+}
+.admin-password-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.admin-password-wrapper input {
+  padding-right: 40px;
+}
+.admin-password-wrapper button {
+  position: absolute;
+  right: 5px;
+  background: transparent;
+  border: none;
+  padding: 5px;
+  color: var(--admin-muted);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.admin-password-wrapper button:hover {
+  color: var(--admin-text);
+}
+.admin-password-wrapper button svg {
+  width: 18px;
+  height: 18px;
+}
+.admin-eye-toggle {
+  background: transparent;
+  border: none;
+  color: var(--admin-muted);
+  cursor: pointer;
+  padding: 0 5px;
+  margin-left: 5px;
+  vertical-align: middle;
+}
+.admin-eye-toggle:hover {
+  color: var(--admin-text);
+}
+.admin-eye-toggle svg {
+  width: 16px;
+  height: 16px;
+}

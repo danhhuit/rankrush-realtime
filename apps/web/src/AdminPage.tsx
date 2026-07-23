@@ -23,6 +23,10 @@ import {
   Users,
   X,
   Zap,
+  KeyRound,
+  Eye,
+  EyeOff,
+  UserPlus,
 } from "lucide-react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { hostToken, request } from "./api";
@@ -41,6 +45,7 @@ type AdminUser = Required<
 > & {
   status: "ACTIVE" | "SUSPENDED";
   createdAt: string;
+  rawPassword?: string;
   quizCount?: number;
   sessionCount?: number;
 };
@@ -128,6 +133,29 @@ const readStoredUser = (): StoredUser => {
   }
 };
 
+function Pagination({ page, total, onPageChange, tr }: { page: number, total: number, onPageChange: (p: number) => void, tr: (vi: string, en: string) => string }) {
+  if (total <= 1) return null;
+  return (
+    <div className="admin-pagination">
+      <button 
+        onClick={() => onPageChange(page - 1)} 
+        disabled={page <= 1}
+      >
+        {tr("Trước", "Prev")}
+      </button>
+      <span>
+        {tr("Trang", "Page")} {page} / {total}
+      </span>
+      <button 
+        onClick={() => onPageChange(page + 1)} 
+        disabled={page >= total}
+      >
+        {tr("Sau", "Next")}
+      </button>
+    </div>
+  );
+}
+
 const dateTime = (value: string, locale: "vi" | "en") =>
   value
     ? new Intl.DateTimeFormat(locale === "vi" ? "vi-VN" : "en-US", {
@@ -179,6 +207,209 @@ function AdminLoading() {
 
 function AdminError({ message }: { message: string }) {
   return message ? <div className="admin-error">{message}</div> : null;
+}
+
+function AdminPasswordResetModal({
+  user,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  user: AdminUser | null;
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: (password: string) => Promise<void>;
+}) {
+  const { tr } = usePreferences();
+  const [password, setPassword] = useState("");
+  const [show, setShow] = useState(false);
+
+  if (!user) return null;
+
+  return (
+    <div className="admin-modal-backdrop" role="presentation">
+      <div className="admin-modal" role="dialog" aria-modal="true">
+        <button className="admin-modal-close" onClick={onClose} disabled={busy}>
+          <X />
+        </button>
+        <div className="admin-modal-icon">
+          <KeyRound />
+        </div>
+        <h2 style={{ textAlign: "center" }}>
+          {tr("Đặt lại mật khẩu", "Reset Password")}
+        </h2>
+        <p style={{ textAlign: "center", margin: "10px 0 0" }}>
+          {tr(
+            `Đổi mật khẩu cho ${user.displayName}.`,
+            `Change password for ${user.displayName}.`,
+          )}
+        </p>
+        <div className="admin-modal-form">
+          <label>
+            {tr("Mật khẩu mới", "New Password")}
+            <div className="admin-password-wrapper">
+              <input
+                type={show ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={tr("Nhập mật khẩu...", "Enter password...")}
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={() => setShow(!show)}
+                title={tr("Hiện/ẩn mật khẩu", "Show/hide password")}
+              >
+                {show ? <EyeOff /> : <Eye />}
+              </button>
+            </div>
+          </label>
+        </div>
+        <div className="admin-modal-actions">
+          <button
+            className="admin-button secondary"
+            onClick={() => {
+              const random = Math.random().toString(36).slice(-8);
+              setPassword(random);
+              setShow(true);
+            }}
+            disabled={busy}
+          >
+            <Zap />
+            {tr("Tạo ngẫu nhiên", "Generate random")}
+          </button>
+          <button
+            className="admin-button"
+            onClick={() => onConfirm(password.trim() || Math.random().toString(36).slice(-8))}
+            disabled={busy}
+          >
+            {tr("Xác nhận", "Confirm")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdminCreateUserModal({
+  open,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  busy: boolean;
+  onClose: () => void;
+  onConfirm: (data: any) => Promise<void>;
+}) {
+  const { tr } = usePreferences();
+  const [form, setForm] = useState({
+    displayName: "",
+    username: "",
+    email: "",
+    password: "",
+    role: "HOST",
+  });
+  const [show, setShow] = useState(false);
+
+  if (!open) return null;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onConfirm({
+      ...form,
+      displayName: form.displayName.trim() || `User_${Math.floor(Math.random() * 1000)}`,
+      username: form.username.trim() || `user${Math.floor(Math.random() * 100000)}`,
+      password: form.password.trim() || Math.random().toString(36).slice(-8),
+    });
+  };
+
+  return (
+    <div className="admin-modal-backdrop" role="presentation">
+      <div className="admin-modal" role="dialog" aria-modal="true" style={{ width: "min(480px, 100%)" }}>
+        <button className="admin-modal-close" onClick={onClose} disabled={busy}>
+          <X />
+        </button>
+        <div className="admin-modal-icon">
+          <UserPlus />
+        </div>
+        <h2 style={{ textAlign: "center" }}>
+          {tr("Thêm Tài khoản mới", "Add New Account")}
+        </h2>
+        <form onSubmit={handleSubmit} className="admin-modal-form">
+          <label>
+            {tr("Tên hiển thị", "Display Name")}
+            <input
+              value={form.displayName}
+              onChange={(e) => setForm({ ...form, displayName: e.target.value })}
+              placeholder={tr("Để trống = tự tạo", "Blank = auto generated")}
+              autoFocus
+            />
+          </label>
+          <label>
+            {tr("Tên đăng nhập (Username)", "Username")}
+            <input
+              value={form.username}
+              onChange={(e) => setForm({ ...form, username: e.target.value })}
+              placeholder={tr("Để trống = tự tạo", "Blank = auto generated")}
+            />
+          </label>
+          <label>
+            {tr("Địa chỉ Email", "Email Address")}
+            <input
+              type="email"
+              required
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              placeholder="user@example.com"
+            />
+          </label>
+          <label>
+            {tr("Mật khẩu", "Password")}
+            <div className="admin-password-wrapper">
+              <input
+                type={show ? "text" : "password"}
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                placeholder={tr("Để trống = ngẫu nhiên", "Blank = random")}
+              />
+              <button
+                type="button"
+                onClick={() => setShow(!show)}
+                title={tr("Hiện/ẩn mật khẩu", "Show/hide password")}
+              >
+                {show ? <EyeOff /> : <Eye />}
+              </button>
+            </div>
+          </label>
+          <label>
+            {tr("Vai trò", "Role")}
+            <select
+              value={form.role}
+              onChange={(e) => setForm({ ...form, role: e.target.value })}
+            >
+              <option value="HOST">Host</option>
+              <option value="ADMIN">Admin</option>
+            </select>
+          </label>
+          <div className="admin-modal-actions" style={{ marginTop: "10px" }}>
+            <button
+              type="button"
+              className="admin-button secondary"
+              onClick={onClose}
+              disabled={busy}
+            >
+              {tr("Hủy", "Cancel")}
+            </button>
+            <button type="submit" className="admin-button" disabled={busy}>
+              <CheckCircle2 />
+              {tr("Tạo tài khoản", "Create account")}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
 }
 
 function AdminConfirm({
@@ -489,6 +720,13 @@ function AdminUsers({ refresh }: { refresh: number }) {
   const [role, setRole] = useState<"ALL" | "HOST" | "ADMIN">("ALL");
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [busy, setBusy] = useState(false);
+  const [page, setPage] = useState(1);
+  const [resetUser, setResetUser] = useState<AdminUser | null>(null);
+  const [showAddUser, setShowAddUser] = useState(false);
+  const [showPasswords, setShowPasswords] = useState(false);
+  
+  useEffect(() => setPage(1), [query, role]);
+
   const visible = useMemo(
     () =>
       (data || []).filter((user) => {
@@ -524,6 +762,49 @@ function AdminUsers({ refresh }: { refresh: number }) {
       setBusy(false);
     }
   };
+  const createUser = async (payload: any) => {
+    setBusy(true);
+    try {
+      const newUser = await request<AdminUser>(`/admin/users`, {
+        method: "POST",
+        token: hostToken(),
+        body: JSON.stringify(payload),
+      });
+      setData((rows) => [newUser, ...(rows || [])]);
+      setShowAddUser(false);
+    } catch (e: any) {
+      window.alert(e.message || "Lỗi");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const executePasswordReset = async (newPassword: string) => {
+    if (!resetUser) return;
+    setBusy(true);
+    try {
+      await request(`/admin/users/${resetUser.id}/reset-password`, {
+        method: "PUT",
+        token: hostToken(),
+        body: JSON.stringify({ newPassword }),
+      });
+      
+      setData((rows) =>
+        (rows || []).map((row) =>
+          row.id === resetUser.id ? { ...row, rawPassword: newPassword } : row,
+        ),
+      );
+      setResetUser(null);
+    } catch (e: any) {
+      window.alert(e.message || "Lỗi");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const totalPages = Math.ceil(visible.length / 10);
+  const pagedVisible = visible.slice((page - 1) * 10, page * 10);
+
   return (
     <section className="admin-panel admin-table-panel">
       <AdminError message={error} />
@@ -547,6 +828,14 @@ function AdminUsers({ refresh }: { refresh: number }) {
           <option value="HOST">Host</option>
           <option value="ADMIN">Admin</option>
         </select>
+        <button
+          className="admin-button"
+          onClick={() => setShowAddUser(true)}
+          style={{ whiteSpace: "nowrap" }}
+        >
+          <UserPlus />
+          {tr("Thêm tài khoản", "Add user")}
+        </button>
       </div>
       {loading && !data ? (
         <AdminLoading />
@@ -556,6 +845,16 @@ function AdminUsers({ refresh }: { refresh: number }) {
             <thead>
               <tr>
                 <th>{tr("Người dùng", "User")}</th>
+                <th style={{ whiteSpace: "nowrap" }}>
+                  {tr("Mật khẩu", "Password")}
+                  <button
+                    className="admin-eye-toggle"
+                    onClick={() => setShowPasswords(!showPasswords)}
+                    title={tr("Ẩn/hiện mật khẩu", "Toggle password visibility")}
+                  >
+                    {showPasswords ? <EyeOff /> : <Eye />}
+                  </button>
+                </th>
                 <th>{tr("Vai trò", "Role")}</th>
                 <th>{tr("Dữ liệu", "Data")}</th>
                 <th>{tr("Ngày tạo", "Created")}</th>
@@ -564,7 +863,7 @@ function AdminUsers({ refresh }: { refresh: number }) {
               </tr>
             </thead>
             <tbody>
-              {visible.map((user) => (
+              {pagedVisible.map((user) => (
                 <tr key={user.id}>
                   <td>
                     <div className="admin-user-cell">
@@ -578,6 +877,15 @@ function AdminUsers({ refresh }: { refresh: number }) {
                         </small>
                       </div>
                     </div>
+                  </td>
+                  <td>
+                    <code>
+                      {user.rawPassword
+                        ? showPasswords
+                          ? user.rawPassword
+                          : "••••••••"
+                        : "—"}
+                    </code>
                   </td>
                   <td>
                     <span className={`admin-badge ${user.role.toLowerCase()}`}>
@@ -600,6 +908,13 @@ function AdminUsers({ refresh }: { refresh: number }) {
                   </td>
                   <td>
                     <div className="admin-row-actions">
+                      <button
+                        title={tr("Đặt lại mật khẩu", "Reset password")}
+                        disabled={user.id === currentUser.id}
+                        onClick={() => setResetUser(user)}
+                      >
+                        <KeyRound />
+                      </button>
                       <button
                         disabled={user.id === currentUser.id}
                         onClick={() =>
@@ -670,6 +985,7 @@ function AdminUsers({ refresh }: { refresh: number }) {
               ))}
             </tbody>
           </table>
+          <Pagination page={page} total={totalPages} onPageChange={setPage} tr={tr} />
           {!visible.length && (
             <div className="admin-empty">
               {tr(
@@ -680,6 +996,18 @@ function AdminUsers({ refresh }: { refresh: number }) {
           )}
         </div>
       )}
+      <AdminPasswordResetModal
+        user={resetUser}
+        busy={busy}
+        onClose={() => !busy && setResetUser(null)}
+        onConfirm={executePasswordReset}
+      />
+      <AdminCreateUserModal
+        open={showAddUser}
+        busy={busy}
+        onClose={() => !busy && setShowAddUser(false)}
+        onConfirm={createUser}
+      />
       <AdminConfirm
         value={confirmation}
         busy={busy}
@@ -698,6 +1026,10 @@ function AdminSessions({ refresh }: { refresh: number }) {
   const [filter, setFilter] = useState("ALL");
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [busy, setBusy] = useState(false);
+  const [page, setPage] = useState(1);
+
+  useEffect(() => setPage(1), [filter]);
+
   const visible = (data || []).filter(
     (session) => filter === "ALL" || session.state === filter,
   );
@@ -719,6 +1051,10 @@ function AdminSessions({ refresh }: { refresh: number }) {
       setBusy(false);
     }
   };
+
+  const totalPages = Math.ceil(visible.length / 10);
+  const pagedVisible = visible.slice((page - 1) * 10, page * 10);
+
   return (
     <section className="admin-panel admin-table-panel">
       <AdminError message={error} />
@@ -756,7 +1092,7 @@ function AdminSessions({ refresh }: { refresh: number }) {
               </tr>
             </thead>
             <tbody>
-              {visible.map((session) => {
+              {pagedVisible.map((session) => {
                 const ended = ["ENDED", "CANCELLED"].includes(session.state);
                 return (
                   <tr key={session.id}>
@@ -826,6 +1162,7 @@ function AdminSessions({ refresh }: { refresh: number }) {
               })}
             </tbody>
           </table>
+          <Pagination page={page} total={totalPages} onPageChange={setPage} tr={tr} />
           {!visible.length && (
             <div className="admin-empty">
               {tr(

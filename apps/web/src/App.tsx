@@ -44,7 +44,6 @@ import {
   Medal,
   Maximize2,
   Menu,
-  Monitor,
   Moon,
   Music2,
   Palette,
@@ -495,12 +494,11 @@ function Logo() {
   );
 }
 function PreferenceControls({ compact = false }: { compact?: boolean }) {
-  const { locale, setLocale, theme, themePreference, setThemePreference, t } =
-    usePreferences();
+  const { locale, setLocale, theme, toggleTheme, t } = usePreferences();
   return (
     <div className={cx("preference-controls", compact && "compact")}>
       <label className="language-control" title={t("language")}>
-        <Globe2 />
+        <span className="language-flag">{locale === "vi" ? "🇻🇳" : "🇬🇧"}</span>
         <select
           value={locale}
           onChange={(event) => setLocale(event.target.value as "vi" | "en")}
@@ -510,28 +508,16 @@ function PreferenceControls({ compact = false }: { compact?: boolean }) {
           <option value="en">EN</option>
         </select>
       </label>
-      <label className="theme-control" title={t("appearance")}>
-        {themePreference === "system" ? (
-          <Monitor />
-        ) : theme === "dark" ? (
-          <Moon />
-        ) : (
-          <Sun />
-        )}
-        <select
-          value={themePreference}
-          onChange={(event) =>
-            setThemePreference(
-              event.target.value as "system" | "light" | "dark",
-            )
-          }
-          aria-label={t("appearance")}
-        >
-          <option value="system">{t("systemTheme")}</option>
-          <option value="light">{t("lightTheme")}</option>
-          <option value="dark">{t("darkTheme")}</option>
-        </select>
-      </label>
+      <button
+        type="button"
+        className="theme-control-button"
+        title={t("appearance")}
+        onClick={toggleTheme}
+        aria-label={t("appearance")}
+      >
+        {theme === "dark" ? <Moon /> : <Sun />}
+        {compact && <span>{theme === "dark" ? t("darkTheme") : t("lightTheme")}</span>}
+      </button>
     </div>
   );
 }
@@ -541,7 +527,15 @@ function Header() {
   const token = hostToken();
   const [open, setOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [pin, setPin] = useState("");
+  const user = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem("rr_user") || "{}");
+    } catch {
+      return {};
+    }
+  }, [token]);
   useEffect(() => {
     const keyboard = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
@@ -607,17 +601,30 @@ function Header() {
                 <Gauge size={17} />
                 {t("dashboard")}
               </Link>
-              <button
-                className="nav-link"
-                onClick={() => {
-                  localStorage.removeItem("rr_host_token");
-                  localStorage.removeItem("rr_user");
-                  nav("/");
-                }}
-              >
-                <LogOut size={17} />
-                {t("logout")}
-              </button>
+              <div className="header-profile-menu">
+                <button
+                  className="header-avatar"
+                  onClick={() => setProfileOpen(!profileOpen)}
+                >
+                  {(user.displayName || "H")[0]}
+                </button>
+                {profileOpen && (
+                  <div className="profile-dropdown">
+                    <Link to="/dashboard/settings" onClick={() => setProfileOpen(false)}>
+                      <Settings2 size={15} /> {tr("Hồ sơ", "Profile")}
+                    </Link>
+                    <button
+                      onClick={() => {
+                        localStorage.removeItem("rr_host_token");
+                        localStorage.removeItem("rr_user");
+                        nav("/");
+                      }}
+                    >
+                      <LogOut size={15} /> {t("logout")}
+                    </button>
+                  </div>
+                )}
+              </div>
             </>
           ) : (
             <Link className="button button-sm button-ghost" to="/login">
@@ -1157,19 +1164,6 @@ function IntroCarousel() {
       ),
       visual: "generator",
     },
-    {
-      icon: <Gamepad2 />,
-      eyebrow: tr("Host kiểm soát trọn vẹn", "A complete Host console"),
-      title: tr(
-        "PIN, QR, phòng chờ và điều khiển trận đấu ở một nơi.",
-        "PIN, QR, lobby, and game controls in one place.",
-      ),
-      text: tr(
-        "Theo dõi người tham gia, tùy chỉnh luật chơi, công bố đáp án và xuất báo cáo sau trận.",
-        "Watch participants join, tune game rules, reveal answers, and open the final report.",
-      ),
-      visual: "host",
-    },
   ] as const;
   useEffect(() => {
     if (paused) return;
@@ -1236,16 +1230,6 @@ function IntroCarousel() {
                 <WandSparkles />{" "}
                 {tr("Đã tạo 10 câu hỏi", "10 questions created")}
               </span>
-            </div>
-          )}
-          {current.visual === "host" && (
-            <div className="intro-host">
-              <span>PIN</span>
-              <b>908 296</b>
-              <QRCodeSVG value="https://rankrush.local/join/908296" size={86} />
-              <small>
-                <Users /> 24 {tr("người trong phòng", "players in lobby")}
-              </small>
             </div>
           )}
         </div>
@@ -1349,6 +1333,9 @@ function Auth({ mode }: { mode: "login" | "register" }) {
       });
       localStorage.setItem("rr_host_token", data.token);
       localStorage.setItem("rr_user", JSON.stringify(data.user));
+      if (mode === "login") {
+        sessionStorage.setItem("rr_login_notice", "true");
+      }
       const pendingQuiz = sessionStorage.getItem("rr_pending_host_quiz");
       if (pendingQuiz) {
         sessionStorage.removeItem("rr_pending_host_quiz");
@@ -1960,6 +1947,10 @@ function Dashboard() {
       .finally(() => setLoading(false));
   useEffect(() => {
     if (token && user.role !== "ADMIN") void load();
+    if (sessionStorage.getItem("rr_login_notice")) {
+      sessionStorage.removeItem("rr_login_notice");
+      setTimeout(() => toast.show(tr("Đăng nhập thành công!", "Logged in successfully!")), 300);
+    }
   }, []);
   if (!token) return <Navigate to="/login" />;
   if (user.role === "ADMIN") return <Navigate to="/admin" replace />;
@@ -2308,7 +2299,7 @@ function DashboardWorkspace({
 }
 
 function ReportsPage() {
-  const { tr } = usePreferences();
+  const { tr, locale } = usePreferences();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -2494,6 +2485,7 @@ function SettingsPage() {
     currentPassword: "",
     password: "",
     confirmPassword: "",
+    logoutOther: false,
   });
   const [saving, setSaving] = useState(false);
   useEffect(() => {
@@ -2540,6 +2532,17 @@ function SettingsPage() {
         }),
       });
       localStorage.setItem("rr_user", JSON.stringify(user));
+      
+      if (form.password) {
+        toast.show(
+          form.logoutOther 
+            ? tr("Đã đổi mật khẩu thành công. Các thiết bị khác đã bị đăng xuất.", "Password changed. Other devices logged out.") 
+            : tr("Đã đổi mật khẩu thành công.", "Password changed successfully.")
+        );
+      } else {
+        toast.show(tr("Đã lưu cài đặt tài khoản.", "Account settings saved."));
+      }
+
       setForm({
         ...form,
         ...user,
@@ -2596,6 +2599,7 @@ function SettingsPage() {
               required
               minLength={3}
               maxLength={30}
+              disabled
             />
           </label>
           <label>
@@ -2646,6 +2650,16 @@ function SettingsPage() {
               required={Boolean(form.password)}
             />
           </label>
+          {Boolean(form.password) && (
+            <label className="checkbox-label">
+              <input 
+                type="checkbox" 
+                checked={form.logoutOther}
+                onChange={(e) => setForm({ ...form, logoutOther: e.target.checked })}
+              />
+              {tr("Đăng xuất khỏi các thiết bị khác", "Log out of other devices")}
+            </label>
+          )}
           <button className="button button-primary" disabled={saving}>
             <Save />
             {saving
@@ -3112,11 +3126,7 @@ function AiCreatePage() {
               )}
               <button
                 className="button button-primary button-lg button-block"
-                disabled={
-                  busy ||
-                  !hasAllDetails ||
-                  (source !== "CSV" && !aiReady)
-                }
+                disabled={busy || !hasAllDetails}
                 aria-busy={busy}
               >
                 {busy ? (
@@ -4135,6 +4145,16 @@ const musicTracks = [
     wave: "triangle",
     notes: [293.66, 440, 369.99, 493.88],
   },
+  {
+    name: "Nhạc nền Free Fire",
+    bpm: 110,
+    wave: "square",
+    notes: [
+      329.63, 392, 440, 440,
+      329.63, 392, 440, 440,
+      329.63, 392, 440, 493.88, 523.25, 493.88, 440
+    ],
+  },
 ] as const;
 
 function PlayerMusic({ disabled = false }: { disabled?: boolean }) {
@@ -4143,7 +4163,7 @@ function PlayerMusic({ disabled = false }: { disabled?: boolean }) {
   const [playing, setPlaying] = useState(false);
   const [trackIndex, setTrackIndex] = useState(() =>
     Math.min(
-      14,
+      musicTracks.length - 1,
       Math.max(0, Number(localStorage.getItem("rr_music_track") || 0)),
     ),
   );

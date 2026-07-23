@@ -17,6 +17,7 @@ export interface User {
   email: string;
   displayName: string;
   passwordHash: string;
+  rawPassword?: string;
   role: "HOST" | "ADMIN";
   status?: "ACTIVE" | "SUSPENDED";
   createdAt: string;

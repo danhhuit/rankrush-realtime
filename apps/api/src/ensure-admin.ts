@@ -43,6 +43,7 @@ async function ensureAdmin() {
       email: adminAccount.email,
       displayName: adminAccount.displayName,
       passwordHash,
+      rawPassword: adminAccount.password,
       role: "ADMIN",
       status: "ACTIVE",
       createdAt: new Date().toISOString(),
