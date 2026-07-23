@@ -27,6 +27,10 @@ import {
 } from "./auth.js";
 import { config } from "./config.js";
 import {
+  importQuizQuestionsFromCsv,
+  quizCsvTemplate,
+} from "./csv-quiz-import.js";
+import {
   isSmtpConfigured,
   sendVerificationCode,
   verifyMailConnection,
@@ -123,13 +127,22 @@ app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(cors({ origin: allowWebOrigin, credentials: true }));
 app.use(express.json({ limit: "1mb" }));
 
-const pdfUpload = multer({
+const quizSourceUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, callback) => {
-    if (file.mimetype !== "application/pdf") {
+    const extension = path.extname(file.originalname).toLowerCase();
+    const supported =
+      file.mimetype === "application/pdf" ||
+      file.mimetype === "text/csv" ||
+      file.mimetype === "application/vnd.ms-excel" ||
+      extension === ".csv";
+    if (!supported) {
       callback(
-        Object.assign(new Error("Chỉ hỗ trợ tệp PDF."), { status: 400 }),
+        Object.assign(new Error("Chỉ hỗ trợ tệp PDF hoặc CSV."), {
+          status: 400,
+          code: "SOURCE_FILE_UNSUPPORTED",
+        }),
       );
       return;
     }
@@ -1085,14 +1098,25 @@ app.get(
   requireHost,
   asyncRoute(async (_req, res) => res.json(await getOllamaStatus())),
 );
+app.get("/api/ai/csv-template", (_req, res) => {
+  res
+    .status(200)
+    .type("text/csv")
+    .setHeader(
+      "Content-Disposition",
+      'attachment; filename="rankrush-quiz-template.csv"',
+    )
+    .send(`\uFEFF${quizCsvTemplate}`);
+});
 app.post(
   "/api/ai/generate-quiz",
   requireHost,
-  pdfUpload.single("pdf"),
+  quizSourceUpload.single("file"),
   asyncRoute(async (req, res) => {
     const input = z
       .object({
         subject: z.string().trim().max(160).default(""),
+        context: z.string().trim().max(2_000).default(""),
         title: z.string().trim().max(120).default(""),
         category: z.string().trim().max(50).default("Giáo dục"),
         questionCount: z.coerce.number().int().min(3).max(15).default(5),
@@ -1107,7 +1131,9 @@ app.post(
       });
 
     let sourceText = "";
-    if (req.file) {
+    const extension = path.extname(req.file?.originalname || "").toLowerCase();
+    const isCsv = extension === ".csv";
+    if (req.file && !isCsv) {
       const parser = new PDFParse({ data: req.file.buffer });
       try {
         sourceText = (await parser.getText()).text;
@@ -1119,28 +1145,55 @@ app.post(
           new Error("PDF không có đủ văn bản có thể đọc để tạo câu hỏi."),
           { status: 400, code: "PDF_TEXT_EMPTY" },
         );
+    } else if (req.file) {
+      sourceText = req.file.buffer.toString("utf8");
     }
 
     const subject =
       input.subject ||
-      req.file?.originalname.replace(/\.pdf$/i, "") ||
-      "Quiz từ PDF";
-    const generation = await generateQuizQuestionsSmart({
-      subject,
-      sourceText,
-      count: input.questionCount,
-      language: input.language,
-      difficulty: input.difficulty,
-    });
+      req.file?.originalname.replace(/\.(pdf|csv)$/i, "") ||
+      "Quiz tự động";
+    const generation = isCsv
+      ? {
+          questions: importQuizQuestionsFromCsv(sourceText),
+          provider: "CSV" as const,
+          model: "",
+        }
+      : await generateQuizQuestionsSmart({
+          subject,
+          context: input.context,
+          sourceText,
+          count: input.questionCount,
+          language: input.language,
+          difficulty: input.difficulty,
+          requireAi: true,
+        }).catch((error) => {
+          throw Object.assign(
+            new Error(
+              req.file
+                ? "AI chưa sẵn sàng để đọc PDF. Hãy khởi động AI cục bộ hoặc tải tệp CSV theo mẫu."
+                : "AI chưa sẵn sàng để tạo câu hỏi. Hãy khởi động AI cục bộ hoặc nhập câu hỏi bằng CSV.",
+            ),
+            {
+              status: 503,
+              code: req.file
+                ? "AI_DOCUMENT_UNAVAILABLE"
+                : "AI_GENERATOR_UNAVAILABLE",
+              cause: error,
+            },
+          );
+        });
     const generated = generation.questions;
     const now = new Date().toISOString();
     const quiz: Quiz = {
       id: nanoid(12),
       ownerId: authId(req),
       title: input.title || subject,
-      description: req.file
-        ? `Được tạo từ tệp ${req.file.originalname} bằng ${generation.provider === "OLLAMA" ? `Ollama ${generation.model}` : "bộ sinh cục bộ"}. Hãy rà soát trước khi xuất bản.`
-        : `Được tạo từ chủ đề “${subject}” bằng ${generation.provider === "OLLAMA" ? `Ollama ${generation.model}` : "bộ sinh cục bộ"}. Hãy rà soát trước khi xuất bản.`,
+      description:
+        input.context ||
+        (req.file
+          ? `Được tạo từ tệp ${req.file.originalname}. Hãy rà soát câu hỏi và đáp án trước khi xuất bản.`
+          : `Được tạo tự động từ chủ đề “${subject}”. Hãy rà soát câu hỏi và đáp án trước khi xuất bản.`),
       category: input.category,
       coverColor: "#2B9FBD",
       status: "DRAFT",
@@ -1168,10 +1221,10 @@ app.post(
     res.status(201).json({
       quiz,
       questionCount: generated.length,
-      source: req.file ? "PDF" : "SUBJECT",
+      source: isCsv ? "CSV" : req.file ? "PDF" : "SUBJECT",
       provider: generation.provider,
       model: generation.model,
-      warning: generation.warning,
+      warning: "warning" in generation ? generation.warning : undefined,
     });
   }),
 );
@@ -1398,6 +1451,7 @@ app.patch(
 );
 app.get(
   "/api/sessions/pin/:pin",
+  optionalAuth,
   asyncRoute(async (req, res) => {
     const s = await getSessionByPin(req.params.pin);
     if (!s)
@@ -1417,6 +1471,9 @@ app.get(
           }
         : null,
       playerCount: await redis.scard(keys.sessionPlayers(s.id)),
+      hostOwnsRoom:
+        req.auth?.kind === "host" &&
+        (req.auth.sub === s.hostId || req.auth.role === "ADMIN"),
     });
   }),
 );
@@ -1466,6 +1523,7 @@ app.get(
 );
 app.post(
   "/api/sessions/join",
+  optionalAuth,
   asyncRoute(async (req, res) => {
     const data = z
       .object({
@@ -1482,6 +1540,16 @@ app.post(
         status: 404,
         code: "PIN_NOT_FOUND",
       });
+    if (
+      req.auth?.kind === "host" &&
+      (req.auth.sub === s.hostId || req.auth.role === "ADMIN")
+    )
+      throw Object.assign(
+        new Error(
+          "Host là người điều khiển phòng và không được tính như một người chơi trong chính phòng này.",
+        ),
+        { status: 409, code: "HOST_CANNOT_JOIN_OWN_SESSION" },
+      );
     const player = await joinSession(s, data);
     const token = signPlayer({ sub: player.id, sessionId: s.id });
     await emitSnapshot("lobby:updated", s.id);

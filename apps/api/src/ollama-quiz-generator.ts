@@ -97,6 +97,7 @@ function toQuestions(
 
 async function generateWithOllama(input: {
   subject: string;
+  context?: string;
   sourceText?: string;
   count: number;
   language?: "vi" | "en";
@@ -108,8 +109,19 @@ async function generateWithOllama(input: {
     ? "Chỉ sử dụng dữ kiện có trong tài liệu. Không thêm kiến thức ngoài tài liệu."
     : "Sử dụng kiến thức phổ thông chính xác về chủ đề được cung cấp.";
   const content = source
-    ? `CHỦ ĐỀ: ${input.subject}\n\nTÀI LIỆU NGUỒN:\n${source}`
-    : `CHỦ ĐỀ: ${input.subject}`;
+    ? [
+        `CHỦ ĐỀ: ${input.subject}`,
+        input.context ? `YÊU CẦU CỦA HOST: ${input.context}` : "",
+        `TÀI LIỆU NGUỒN:\n${source}`,
+      ]
+        .filter(Boolean)
+        .join("\n\n")
+    : [
+        `CHỦ ĐỀ: ${input.subject}`,
+        input.context ? `YÊU CẦU CỦA HOST: ${input.context}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n");
   const languageRule =
     input.language === "en"
       ? "Write every question, option, and explanation in English."
@@ -138,6 +150,9 @@ async function generateWithOllama(input: {
             languageRule,
             difficultyRule,
             "Câu hỏi phải rõ ràng; phương án nhiễu hợp lý; phần giải thích ngắn gọn và nêu căn cứ cho đáp án.",
+            "Bám sát mục tiêu, phạm vi và đối tượng mà Host mô tả; không biến nguyên câu mô tả thành nội dung câu hỏi.",
+            "Không tạo câu hỏi kiểu hỏi mục tiêu học tập chung chung. Mỗi câu phải kiểm tra một dữ kiện, khái niệm hoặc tình huống cụ thể.",
+            "Tự xác định correctIndex từ kiến thức hoặc tài liệu nguồn; kiểm tra đáp án đúng khớp chính xác với một lựa chọn trước khi trả kết quả.",
             "Không tạo câu hỏi mơ hồ, không dùng lựa chọn kiểu 'tất cả đáp án trên'.",
             groundingRule,
             `Đầu ra phải tuân thủ JSON Schema sau: ${JSON.stringify(schema)}`,
@@ -204,10 +219,12 @@ export async function getOllamaStatus() {
 
 export async function generateQuizQuestionsSmart(input: {
   subject: string;
+  context?: string;
   sourceText?: string;
   count: number;
   language?: "vi" | "en";
   difficulty?: "EASY" | "MEDIUM" | "HARD";
+  requireAi?: boolean;
 }): Promise<QuizGenerationResult> {
   if (config.OLLAMA_ENABLED) {
     try {
@@ -219,6 +236,7 @@ export async function generateQuizQuestionsSmart(input: {
     } catch (error) {
       const warning = (error as Error).message;
       console.warn(`[OLLAMA_FALLBACK] ${warning}`);
+      if (input.requireAi) throw error;
       return {
         questions: generateQuizQuestions(input),
         provider: "LOCAL_FALLBACK",
@@ -227,6 +245,8 @@ export async function generateQuizQuestionsSmart(input: {
       };
     }
   }
+  if (input.requireAi)
+    throw new Error("Dịch vụ AI cục bộ đang bị tắt trong cấu hình.");
   return {
     questions: generateQuizQuestions(input),
     provider: "LOCAL_FALLBACK",

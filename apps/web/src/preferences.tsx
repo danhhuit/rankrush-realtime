@@ -198,9 +198,9 @@ const PreferencesContext = createContext<PreferencesValue | null>(null);
 function initialTheme(): Theme {
   const saved = localStorage.getItem("rr_theme");
   if (saved === "light" || saved === "dark") return saved;
-  return window.matchMedia?.("(prefers-color-scheme: dark)").matches
-    ? "dark"
-    : "light";
+  // Keep first render deterministic across browsers. Users can still opt in to
+  // dark mode with the theme button, and that explicit choice is persisted.
+  return "light";
 }
 
 function initialLocale(): Locale {

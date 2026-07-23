@@ -38,9 +38,12 @@ Sorted Set là nguồn sự thật duy nhất của bảng xếp hạng.
 - Dashboard, Quiz của tôi, Thư viện, Báo cáo, Bảng xếp hạng và Cài đặt tài khoản.
 - CRUD quiz/câu hỏi, nhân bản, công khai/bản nháp, sắp xếp câu hỏi và cấu hình
   timer/xáo trộn.
-- Tạo quiz tự động từ chủ đề hoặc PDF bằng Ollama; có fallback cục bộ khi Ollama
-  không sẵn sàng.
+- Tạo quiz tự động từ chủ đề/PDF với ô mô tả chi tiết; nhập CSV theo mẫu khi
+  không dùng AI. PDF chỉ được lưu khi AI trả về đủ câu hỏi, đáp án và lời giải
+  hợp lệ.
 - Tạo lobby có PIN, QR và đường dẫn LAN/public; có thể ẩn thông tin phòng.
+- Host chỉ là người điều khiển: tài khoản sở hữu phòng không được tạo Player,
+  không tăng số người và không xuất hiện trên bảng xếp hạng.
 - Thiết lập đội, ẩn bảng xếp hạng, tắt âm thiết bị người chơi và điểm theo tốc độ.
 - Điều khiển bắt đầu, tạm dừng, tiếp tục, bỏ qua câu hỏi, kết thúc hoặc hủy phòng.
 - Theo dõi người chơi và tiến độ trả lời realtime; loại người chơi tại lobby.
@@ -57,7 +60,7 @@ Sorted Set là nguồn sự thật duy nhất của bảng xếp hạng.
 | Dữ liệu     | Redis 7.4, ioredis, HASH/SET/LIST/STRING/ZSET/STREAM         |
 | Xác thực    | JWT, bcrypt, email OTP lưu dạng băm                          |
 | Email       | Nodemailer và SMTP                                           |
-| AI/PDF      | Ollama, Qwen 2.5, JSON Schema, `pdf-parse`, Multer           |
+| AI/tệp      | Ollama, Qwen 2.5, JSON Schema, `pdf-parse`, CSV, Multer      |
 | An toàn tên | `@2toad/profanity` và từ điển/chuẩn hóa tiếng Việt           |
 | Kiểm thử    | Vitest, Supertest, TypeScript compiler                       |
 | Môi trường  | npm workspaces, Docker Compose, RedisInsight tùy chọn        |
@@ -83,7 +86,7 @@ rankrush-realtime/
 - Node.js 20 trở lên.
 - npm 10 trở lên.
 - Docker Desktop hoặc một Redis tương thích tại `localhost:6379`.
-- Ollama là tùy chọn; ứng dụng vẫn tạo quiz bằng fallback khi Ollama tắt.
+- Ollama cần chạy khi tạo từ chủ đề/PDF; CSV là luồng nhập dự phòng không cần AI.
 - SMTP là tùy chọn trong development và bắt buộc nếu muốn gửi mã email thật.
 
 ## Khởi động development
@@ -157,8 +160,16 @@ ollama list
 ```
 
 RankRush yêu cầu kết quả theo JSON Schema, kiểm tra lại bằng Zod và luôn lưu quiz
-AI ở trạng thái nháp để Host rà soát. Nếu Ollama/model không sẵn sàng hoặc quá
-thời gian, backend chuyển sang bộ sinh quy tắc cục bộ và trả cảnh báo provider.
+AI ở trạng thái nháp để Host rà soát. Giao diện chỉ hiển thị trạng thái
+“Trình tạo câu hỏi AI”, không đưa tên model/công nghệ vào nội dung sản phẩm.
+Nếu AI/model chưa sẵn sàng, backend không tạo quiz chung chung từ PDF mà hướng
+dẫn Host tải mẫu CSV, điền câu hỏi và đáp án đúng rồi nhập lại.
+
+Ô **Mô tả / yêu cầu chi tiết** được đưa trực tiếp vào prompt để xác định đối
+tượng, phạm vi, kiểu dữ kiện và điều cần tránh. Với PDF, model chỉ được dùng dữ
+kiện trong tài liệu và phải tự xác định đáp án đúng. Tệp CSV mẫu có thể tải tại
+`GET /api/ai/csv-template`; các cột `question`, `type` và `correctAnswer` là bắt
+buộc, và backend kiểm tra từng dòng trước khi lưu.
 
 Các biến liên quan nằm trong `.env.example`:
 
@@ -176,8 +187,8 @@ lần nhập sai. Mã chỉ lưu dạng băm trong Redis.
 
 ```dotenv
 SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_SECURE=false
+SMTP_PORT=465
+SMTP_SECURE=true
 SMTP_USER=your-email@gmail.com
 SMTP_PASS=your-app-password
 SMTP_FROM=RankRush <your-email@gmail.com>
@@ -186,6 +197,11 @@ SMTP_FROM=RankRush <your-email@gmail.com>
 Với Gmail, dùng App Password thay cho mật khẩu đăng nhập. Trong development,
 `EMAIL_DEV_CODE_ENABLED=true` cho phép trả mã thử nếu SMTP chưa cấu hình. Luôn
 đặt biến này thành `false` trong production.
+
+`SMTP_USER`/`SMTP_PASS` luôn là thông tin của **một tài khoản gửi**. Mỗi lần đăng
+ký hoặc quên mật khẩu, trường `to` được lấy động từ email người dùng vừa nhập;
+không tạo một `SMTP_PASS` mới cho từng người nhận. Không commit App Password vào
+Git.
 
 ## Các lệnh chính
 

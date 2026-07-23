@@ -39,6 +39,8 @@ giao diện, dữ liệu và mã nguồn độc lập.
 8. QR dùng địa chỉ LAN hoặc `PUBLIC_WEB_URL`; Host có thể ẩn PIN, QR và link.
 9. Lobby hiển thị avatar, nickname và số người realtime; Host có thể loại người
    chơi trước khi bắt đầu.
+   Tài khoản sở hữu phòng chỉ mở Host Console, không được tạo Player trong chính
+   phòng đó, không tăng `playerCount` và không xuất hiện trên leaderboard/report.
 10. Thiết lập Team mode, ẩn leaderboard, tắt âm thiết bị và điểm theo tốc độ.
 11. Điều khiển bắt đầu, tạm dừng, tiếp tục, bỏ qua câu, kết thúc, hủy và chơi lại.
 12. Xem tiến độ trả lời của phòng mà không nhìn thấy đáp án riêng của Player.
@@ -48,15 +50,21 @@ giao diện, dữ liệu và mã nguồn độc lập.
 
 ### 1.3. Tạo quiz tự động
 
-1. Nhận chủ đề hoặc PDF có văn bản, tối đa 10 MB.
-2. Host chọn tên quiz, danh mục và số lượng 3–15 câu.
-3. Backend trích xuất PDF, gọi Ollama và yêu cầu output theo JSON Schema.
-4. Zod kiểm tra lại cấu trúc, lựa chọn, đáp án đúng, timer và lời giải.
-5. Quiz AI luôn được lưu dạng nháp và mở trong Quiz Editor để rà soát.
-6. Model mặc định là `qwen2.5:3b`; không cần API key đám mây.
-7. Khi Ollama tắt, thiếu model hoặc timeout, hệ thống dùng bộ sinh quy tắc cục bộ
-   và trả provider/cảnh báo rõ cho giao diện.
-8. `GET /api/ai/status` trả trạng thái kết nối, model và khả năng sinh quiz.
+1. Nhận chủ đề, PDF có văn bản hoặc CSV theo mẫu; tệp tối đa 10 MB.
+2. Host chọn tên quiz, danh mục, số lượng 3–15 câu và nhập mô tả/yêu cầu chi tiết.
+3. Backend trích xuất PDF, đưa tài liệu và mô tả vào prompt, yêu cầu AI tự xác
+   định đáp án đúng và trả output theo JSON Schema.
+4. Zod kiểm tra lại cấu trúc, bốn lựa chọn khác nhau, `correctIndex`, timer và lời
+   giải. Quiz không hợp lệ không được lưu.
+5. Nếu AI chưa sẵn sàng, PDF/chủ đề trả lỗi có hướng dẫn thay vì tạo câu hỏi mẫu
+   chung chung. Host vẫn có thể tải mẫu và nhập CSV không cần AI.
+6. CSV hỗ trợ `SINGLE_CHOICE`, `TRUE_FALSE`, `TEXT`; backend kiểm tra từng dòng,
+   đáp án A–F/nội dung đúng, accepted answers và giới hạn tối đa 100 câu.
+7. Quiz tự động luôn được lưu dạng nháp và mở trong Quiz Editor để rà soát.
+8. Model mặc định là `qwen2.5:3b`; không cần API key đám mây. Tên model/provider
+   không hiển thị trên giao diện sản phẩm.
+9. `GET /api/ai/status` phục vụ kiểm tra nội bộ; `GET /api/ai/csv-template` tải
+   tệp mẫu CSV.
 
 ## 2. State machine của phòng chơi
 
@@ -131,7 +139,7 @@ Express API
 ├─ Zod validation
 ├─ Host JWT / Player JWT / ownership guards
 ├─ Game state machine + timers + phase locks
-├─ Ollama/PDF generator + local fallback
+├─ AI/PDF generator + validated CSV import
 ├─ SMTP email verification
 └─ Multilingual nickname moderation
         │
@@ -158,7 +166,7 @@ Redis 7.4
 | Zod                | Validation    | Schema đọc được, dùng chung cho runtime và kiểm thử           |
 | JWT + bcrypt       | Xác thực      | Tách Host/Player, mật khẩu không lưu plaintext                |
 | Nodemailer         | Email         | Hỗ trợ SMTP Gmail, Outlook, Mailgun, Brevo và provider khác   |
-| Multer + pdf-parse | PDF           | Giới hạn upload và trích văn bản ở backend                    |
+| Multer + pdf-parse | PDF/CSV       | Giới hạn upload, trích văn bản và kiểm tra tệp ở backend      |
 | Ollama + Qwen 2.5  | AI cục bộ     | Không cần API key, dữ liệu ở máy, phù hợp tiếng Việt          |
 | JSON Schema + Zod  | Output AI     | Giảm lỗi cấu trúc và chặn quiz không hợp lệ                   |
 | @2toad/profanity   | Moderation    | Từ điển đa ngôn ngữ và Unicode word boundaries                |
@@ -181,8 +189,9 @@ Redis 7.4
 | Quiz     | `GET/PUT/DELETE /api/quizzes/:id`                      | Chi tiết và CRUD quiz           |
 | Question | `POST /api/quizzes/:id/questions`                      | Thêm câu hỏi                    |
 | Question | `PUT/DELETE /api/questions/:id`                        | Sửa/xóa câu hỏi                 |
-| AI       | `GET /api/ai/status`                                   | Kiểm tra Ollama/model           |
-| AI       | `POST /api/ai/generate-quiz`                           | Tạo quiz từ chủ đề/PDF          |
+| AI       | `GET /api/ai/status`                                   | Kiểm tra bộ sinh AI             |
+| Import   | `GET /api/ai/csv-template`                             | Tải mẫu nhập câu hỏi CSV        |
+| AI       | `POST /api/ai/generate-quiz`                           | Tạo/nhập từ chủ đề/PDF/CSV      |
 | Session  | `POST /api/sessions`                                   | Tạo phòng và PIN                |
 | Session  | `GET /api/sessions/:id`                                | Snapshot theo quyền Host/Player |
 | Join     | `GET /api/sessions/pin/:pin`                           | Tra cứu phòng công khai         |
@@ -204,6 +213,9 @@ Redis 7.4
 - Sau 5 lần nhập mã sai, mã bị hủy.
 - Forgot-password trả thông báo giống nhau dù email tồn tại hay không để hạn chế
   dò tài khoản.
+- SMTP dùng một tài khoản gửi cấu hình bởi `SMTP_USER`/`SMTP_PASS`; địa chỉ nhận
+  luôn lấy động từ email đăng ký hoặc email quên mật khẩu. App Password không
+  được sinh theo người nhận và không được commit vào Git.
 - Development có thể trả `devCode`; production phải tắt
   `EMAIL_DEV_CODE_ENABLED` và cấu hình SMTP thật.
 
@@ -260,7 +272,7 @@ Invoke-RestMethod http://localhost:4000/api/health
 
 - Điểm sai bằng 0, điểm tốc độ theo bậc, điểm sàn và câu cuối nhân đôi.
 - Chuẩn hóa câu trả lời văn bản.
-- Generator từ chủ đề/PDF, Ollama structured output và fallback.
+- Generator từ chủ đề/PDF, AI structured output và CSV import có kiểm tra đáp án.
 - Bộ lọc nickname: tên hợp lệ, nhiều ngôn ngữ, tiếng Việt có dấu/không dấu,
   leetspeak, dấu phân cách và ký tự vô hình.
 - API/web type-check và production bundle.
@@ -269,7 +281,7 @@ Invoke-RestMethod http://localhost:4000/api/health
 
 1. Đăng ký bằng mã email; đăng nhập bằng username và email.
 2. Quên mật khẩu, nhập mã và xác nhận mật khẩu mới.
-3. Tạo/publish quiz hoặc tạo từ PDF qua Ollama.
+3. Tạo/publish quiz từ chủ đề/PDF qua AI; tải mẫu và nhập một quiz bằng CSV.
 4. Tạo lobby, quét QR bằng điện thoại cùng Wi-Fi.
 5. Mở hai tab Player, dùng hai biệt danh/avatar và xác nhận đáp án độc lập.
 6. Kiểm tra đếm ngược, preview 5 giây, timer, điểm tốc độ và câu cuối nhân đôi.

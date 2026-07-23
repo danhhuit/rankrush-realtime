@@ -9,7 +9,17 @@ const englishErrors: Record<string, string> = {
   EMAIL_SEND_FAILED:
     "The verification email could not be sent. Check the SMTP configuration.",
   FORBIDDEN: "You do not have permission to perform this action.",
-  GENERATOR_SOURCE_REQUIRED: "Enter a subject or upload a PDF.",
+  GENERATOR_SOURCE_REQUIRED: "Enter a subject or upload a PDF/CSV file.",
+  AI_DOCUMENT_UNAVAILABLE:
+    "The AI service is not ready to read this PDF. Start local AI or upload the CSV template.",
+  AI_GENERATOR_UNAVAILABLE:
+    "The AI service is not ready. Start local AI or import questions from CSV.",
+  CSV_EMPTY: "The CSV file does not contain any questions.",
+  CSV_INVALID:
+    "The CSV file is invalid. Download and use the provided template.",
+  CSV_TOO_LARGE: "A CSV file can contain at most 100 questions.",
+  HOST_CANNOT_JOIN_OWN_SESSION:
+    "The Host controls this room and cannot join it as a player.",
   LOGIN_FAILED: "Username/email or password is incorrect.",
   LOGIN_RATE_LIMITED:
     "Too many failed login attempts. Try again in 15 minutes.",

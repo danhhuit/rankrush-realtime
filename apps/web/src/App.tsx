@@ -30,6 +30,7 @@ import {
   Edit3,
   Eye,
   EyeOff,
+  FileSpreadsheet,
   Gamepad2,
   Gauge,
   Globe2,
@@ -1101,8 +1102,8 @@ function IntroCarousel() {
         "Turn a subject or PDF into a quiz.",
       ),
       text: tr(
-        "Ollama chạy cục bộ giúp gợi ý câu hỏi; bạn vẫn có thể xem lại và chỉnh sửa trước khi công khai.",
-        "Local Ollama suggests questions that you can review and edit before publishing.",
+        "AI phân tích nội dung, tự xác định đáp án và tạo bản nháp để bạn xem lại trước khi công khai; CSV luôn sẵn sàng cho dữ liệu có cấu trúc.",
+        "AI analyzes content, identifies answers, and creates a draft for review; CSV import is available for structured data.",
       ),
       visual: "generator",
     },
@@ -2243,7 +2244,7 @@ function DashboardWorkspace({
 }
 
 function ReportsPage() {
-  const { tr, locale } = usePreferences();
+  const { tr } = usePreferences();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -2597,18 +2598,21 @@ function SettingsPage() {
 function AiCreatePage() {
   const { tr, locale } = usePreferences();
   const nav = useNavigate();
-  const [source, setSource] = useState<"SUBJECT" | "PDF">("SUBJECT");
+  const [source, setSource] = useState<"SUBJECT" | "PDF" | "CSV">("SUBJECT");
   const [form, setForm] = useState({
     subject: "",
+    context: "",
     title: "",
-    category: "Education",
-    questionCount: 5,
-    language: locale,
-    difficulty: "MEDIUM",
+    category: "",
+    questionCount: 0,
+    language: "" as "" | "vi" | "en",
+    difficulty: "",
   });
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
+  const progressTimer = useRef<number | null>(null);
   const [aiStatus, setAiStatus] = useState<{
     enabled: boolean;
     reachable: boolean;
@@ -2636,20 +2640,65 @@ function AiCreatePage() {
       );
   }, []);
   if (!hostToken()) return <Navigate to="/login" />;
+  const hasCommonDetails = Boolean(
+    form.title.trim() &&
+      form.category &&
+      form.questionCount > 0 &&
+      form.language &&
+      form.difficulty,
+  );
+  const hasSourceDetails =
+    source === "SUBJECT"
+      ? Boolean(form.subject.trim() && form.context.trim())
+      : source === "PDF"
+        ? Boolean(file && form.context.trim())
+        : Boolean(file);
+  const hasAllDetails = hasCommonDetails && hasSourceDetails;
+  const aiReady = Boolean(aiStatus?.reachable && aiStatus.modelInstalled);
+
+  function clearProgressTimer() {
+    if (progressTimer.current !== null) {
+      window.clearInterval(progressTimer.current);
+      progressTimer.current = null;
+    }
+  }
+
+  useEffect(() => clearProgressTimer, []);
+
   async function generate(event: FormEvent) {
     event.preventDefault();
+    if (!hasAllDetails) {
+      setError(
+        tr(
+          "Vui lòng điền đầy đủ tất cả thông tin bắt buộc trước khi tạo quiz.",
+          "Please complete every required field before generating the quiz.",
+        ),
+      );
+      return;
+    }
     setBusy(true);
+    setProgress(8);
     setError("");
+    clearProgressTimer();
+    progressTimer.current = window.setInterval(() => {
+      setProgress((current) => {
+        if (current < 70) return current + 7;
+        if (current < 90) return current + 2;
+        if (current < 96) return current + 1;
+        return current;
+      });
+    }, 650);
     try {
       const body = new FormData();
       Object.entries(form).forEach(([key, value]) =>
         body.append(key, String(value)),
       );
-      if (file) body.append("pdf", file);
+      if (file) body.append("file", file);
       const result = await request<{
         quiz: Quiz;
         questionCount: number;
-        provider: "OLLAMA" | "LOCAL_FALLBACK";
+        source: "SUBJECT" | "PDF" | "CSV";
+        provider: "OLLAMA" | "LOCAL_FALLBACK" | "CSV";
         model: string;
         warning?: string;
       }>("/ai/generate-quiz", {
@@ -2657,22 +2706,26 @@ function AiCreatePage() {
         token: hostToken(),
         body,
       });
+      clearProgressTimer();
+      setProgress(100);
       sessionStorage.setItem(
         "rr_ai_notice",
-        result.provider === "OLLAMA"
+        result.source === "CSV"
           ? tr(
-              `Đã tạo ${result.questionCount} câu bằng Ollama ${result.model}.`,
-              `Created ${result.questionCount} questions with Ollama ${result.model}.`,
+              `Đã nhập và kiểm tra ${result.questionCount} câu hỏi từ CSV.`,
+              `Imported and validated ${result.questionCount} questions from CSV.`,
             )
           : tr(
-              `Ollama chưa sẵn sàng; đã tạo ${result.questionCount} câu bằng bộ sinh dự phòng.`,
-              `Ollama was unavailable; created ${result.questionCount} questions with the fallback generator.`,
+              `AI đã tạo ${result.questionCount} câu hỏi. Hãy kiểm tra lại đáp án trước khi xuất bản.`,
+              `AI created ${result.questionCount} questions. Review the answers before publishing.`,
             ),
       );
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 250));
       nav(`/editor/${result.quiz.id}`);
     } catch (e) {
       setError((e as Error).message);
     } finally {
+      clearProgressTimer();
       setBusy(false);
     }
   }
@@ -2728,52 +2781,60 @@ function AiCreatePage() {
                 <button
                   type="button"
                   className={source === "PDF" ? "active" : ""}
-                  onClick={() => setSource("PDF")}
+                  onClick={() => {
+                    setSource("PDF");
+                    setFile(null);
+                  }}
                 >
                   <BookOpen />
                   PDF
                 </button>
+                <button
+                  type="button"
+                  className={source === "CSV" ? "active" : ""}
+                  onClick={() => {
+                    setSource("CSV");
+                    setFile(null);
+                  }}
+                >
+                  <FileSpreadsheet />
+                  CSV
+                </button>
               </div>
-              <div
-                className={cx(
-                  "ai-provider-status",
-                  !aiStatus
-                    ? "loading"
-                    : aiStatus.reachable && aiStatus.modelInstalled
-                      ? "ready"
-                      : "unavailable",
-                )}
-              >
-                <Cpu />
-                <div>
-                  <b>
-                    Ollama ·{" "}
-                    {aiStatus?.model || tr("đang kiểm tra", "checking")}
-                  </b>
-                  <span>
-                    {!aiStatus
-                      ? tr(
-                          "Đang kết nối dịch vụ AI cục bộ...",
-                          "Connecting to local AI...",
-                        )
+              {source !== "CSV" && (
+                <div
+                  className={cx(
+                    "ai-provider-status",
+                    !aiStatus
+                      ? "loading"
                       : aiStatus.reachable && aiStatus.modelInstalled
+                        ? "ready"
+                        : "unavailable",
+                  )}
+                >
+                  <Cpu />
+                  <div>
+                    <b>{tr("Trình tạo câu hỏi AI", "AI quiz generator")}</b>
+                    <span>
+                      {!aiStatus
                         ? tr(
-                            "Đã sẵn sàng · dữ liệu xử lý trên máy",
-                            "Ready · data stays on this device",
+                            "Đang kiểm tra trạng thái...",
+                            "Checking availability...",
                           )
-                        : aiStatus.reachable
+                        : aiStatus.reachable && aiStatus.modelInstalled
                           ? tr(
-                              "Ollama đang chạy nhưng chưa có model",
-                              "Ollama is running but the model is missing",
+                              "Đã sẵn sàng · dữ liệu được xử lý trên máy",
+                              "Ready · data is processed on this device",
                             )
                           : tr(
-                              "Không kết nối được · sẽ dùng bộ sinh dự phòng",
-                              "Unavailable · the fallback generator will be used",
+                              "AI chưa sẵn sàng · bạn vẫn có thể nhập bằng CSV",
+                              "AI is not ready · CSV import is still available",
                             )}
-                  </span>
+                    </span>
+                  </div>
+                  <i />
                 </div>
-                <i />
-              </div>
+              )}
               {source === "SUBJECT" ? (
                 <label>
                   {tr("Chủ đề", "Subject")}
@@ -2782,6 +2843,7 @@ function AiCreatePage() {
                     onChange={(e) =>
                       setForm({ ...form, subject: e.target.value })
                     }
+                    required
                     placeholder={tr(
                       "Ví dụ: Redis và bảng xếp hạng",
                       "Example: Redis and leaderboards",
@@ -2792,21 +2854,70 @@ function AiCreatePage() {
                 <label className="pdf-drop">
                   <input
                     type="file"
-                    accept="application/pdf"
+                    accept={
+                      source === "PDF"
+                        ? "application/pdf,.pdf"
+                        : "text/csv,.csv"
+                    }
                     onChange={(e) => setFile(e.target.files?.[0] || null)}
+                    required
                   />
-                  <BookOpen />
+                  {source === "PDF" ? <BookOpen /> : <FileSpreadsheet />}
                   <b>
                     {file
                       ? file.name
-                      : tr("Thả hoặc chọn tệp PDF", "Drop or choose a PDF")}
+                      : source === "PDF"
+                        ? tr("Thả hoặc chọn tệp PDF", "Drop or choose a PDF")
+                        : tr("Thả hoặc chọn tệp CSV", "Drop or choose a CSV")}
                   </b>
                   <span>
-                    {tr(
-                      "Tối đa 10 MB · PDF có văn bản",
-                      "Up to 10 MB · text-based PDF",
-                    )}
+                    {source === "PDF"
+                      ? tr(
+                          "Tối đa 10 MB · PDF phải có văn bản có thể chọn",
+                          "Up to 10 MB · PDF must contain selectable text",
+                        )
+                      : tr(
+                          "Đáp án được kiểm tra theo từng dòng · tối đa 100 câu",
+                          "Answers are validated row by row · up to 100 questions",
+                        )}
                   </span>
+                </label>
+              )}
+              {source === "CSV" && (
+                <a
+                  className="button button-secondary csv-template-link"
+                  href="/api/ai/csv-template"
+                  download
+                >
+                  <FileSpreadsheet />
+                  {tr("Tải tệp CSV mẫu", "Download CSV template")}
+                </a>
+              )}
+              {source !== "CSV" && (
+                <label>
+                  {tr(
+                    "Mô tả / yêu cầu chi tiết",
+                    "Description / detailed brief",
+                  )}
+                  <textarea
+                    className="generator-context"
+                    value={form.context}
+                    onChange={(event) =>
+                      setForm({ ...form, context: event.target.value })
+                    }
+                    placeholder={tr(
+                      "Ví dụ: Dành cho sinh viên năm 2; tập trung vào đặc điểm cầu thủ, mỗi câu chỉ có một đáp án rõ ràng; tránh hỏi tiểu sử ngoài phạm vi.",
+                      "Example: For second-year students; focus on player characteristics, use one unambiguous answer, and avoid out-of-scope biography questions.",
+                    )}
+                    maxLength={2000}
+                    required
+                  />
+                  <small>
+                    {tr(
+                      "Mô tả càng cụ thể thì câu hỏi và phương án nhiễu càng sát yêu cầu.",
+                      "A precise brief produces more relevant questions and distractors.",
+                    )}
+                  </small>
                 </label>
               )}
               <div className="form-grid">
@@ -2817,9 +2928,10 @@ function AiCreatePage() {
                     onChange={(e) =>
                       setForm({ ...form, title: e.target.value })
                     }
+                    required
                     placeholder={tr(
-                      "Để trống để dùng tên chủ đề",
-                      "Leave blank to use the subject",
+                      "Nhập tên quiz rõ ràng",
+                      "Enter a clear quiz name",
                     )}
                   />
                 </label>
@@ -2833,7 +2945,11 @@ function AiCreatePage() {
                         questionCount: Number(e.target.value),
                       })
                     }
+                    required
                   >
+                    <option value={0} disabled>
+                      {tr("Chọn số câu", "Select a question count")}
+                    </option>
                     {[3, 5, 8, 10, 12, 15].map((n) => (
                       <option key={n}>{n}</option>
                     ))}
@@ -2847,7 +2963,11 @@ function AiCreatePage() {
                   onChange={(e) =>
                     setForm({ ...form, category: e.target.value })
                   }
+                  required
                 >
+                  <option value="" disabled>
+                    {tr("Chọn danh mục", "Select a category")}
+                  </option>
                   {categories.map((category) => (
                     <option key={category.name} value={category.name}>
                       {contentLabel(category.name, tr)}
@@ -2863,10 +2983,14 @@ function AiCreatePage() {
                     onChange={(event) =>
                       setForm({
                         ...form,
-                        language: event.target.value as "vi" | "en",
+                        language: event.target.value as "" | "vi" | "en",
                       })
                     }
+                    required
                   >
+                    <option value="" disabled>
+                      {tr("Chọn ngôn ngữ", "Select a language")}
+                    </option>
                     <option value="vi">Tiếng Việt</option>
                     <option value="en">English</option>
                   </select>
@@ -2878,7 +3002,11 @@ function AiCreatePage() {
                     onChange={(event) =>
                       setForm({ ...form, difficulty: event.target.value })
                     }
+                    required
                   >
+                    <option value="" disabled>
+                      {tr("Chọn độ khó", "Select a difficulty")}
+                    </option>
                     <option value="EASY">{tr("Dễ", "Easy")}</option>
                     <option value="MEDIUM">{tr("Trung bình", "Medium")}</option>
                     <option value="HARD">{tr("Khó", "Hard")}</option>
@@ -2887,18 +3015,28 @@ function AiCreatePage() {
               </div>
               <ErrorBox error={error} />
               <button
-                className="button button-primary button-lg button-block"
+                className={cx(
+                  "button button-primary button-lg button-block",
+                  busy && "generation-progress-button",
+                )}
                 disabled={
-                  busy || (source === "SUBJECT" ? !form.subject.trim() : !file)
+                  busy ||
+                  !hasAllDetails ||
+                  (source !== "CSV" && !aiReady)
                 }
+                aria-busy={busy}
               >
                 <WandSparkles />
                 {busy
-                  ? tr(
-                      "Ollama đang đọc và tạo câu hỏi...",
-                      "Ollama is reading and generating questions...",
-                    )
-                  : tr("Tạo quiz tự động", "Generate quiz")}
+                  ? source === "CSV"
+                    ? tr("Đang kiểm tra và nhập CSV...", "Validating CSV...")
+                    : tr(
+                        "AI đang phân tích và tạo câu hỏi...",
+                        "AI is analyzing and generating questions...",
+                      )
+                  : source === "CSV"
+                    ? tr("Nhập quiz từ CSV", "Import quiz from CSV")
+                    : tr("Tạo quiz tự động", "Generate quiz")}
               </button>
               <small className="generator-note">
                 {tr(
@@ -3130,7 +3268,9 @@ function Editor() {
                   <small>
                     {q.type === "TEXT"
                       ? tr("Nhập văn bản", "Text answer")
-                      : tr("Trắc nghiệm", "Multiple choice")}{" "}
+                      : q.type === "TRUE_FALSE"
+                        ? tr("Đúng / Sai", "True / False")
+                        : tr("Trắc nghiệm", "Multiple choice")}{" "}
                     • {q.timeLimitSec}s
                   </small>
                 </div>
@@ -3360,7 +3500,7 @@ function QuestionForm({
       return;
     }
     const options =
-      q.options.length >= 2
+      q.type === "SINGLE_CHOICE" && q.options.length >= 2
         ? q.options
         : [
             { id: crypto.randomUUID(), text: tr("Đáp án A", "Answer A") },
@@ -3540,7 +3680,14 @@ function Join() {
   async function lookup() {
     setError("");
     try {
-      setInfo(await request(`/sessions/pin/${pin}`));
+      const room = await request<any>(`/sessions/pin/${pin}`, {
+        token: hostToken(),
+      });
+      if (room.hostOwnsRoom) {
+        nav(`/host/${room.session.id}`);
+        return;
+      }
+      setInfo(room);
     } catch (e) {
       setInfo(null);
       setError((e as Error).message);
@@ -3560,6 +3707,7 @@ function Join() {
         player: Player;
       }>("/sessions/join", {
         method: "POST",
+        token: hostToken(),
         body: JSON.stringify({ pin, ...form }),
       });
       sessionStorage.setItem(`rr_player_${data.sessionId}`, data.token);

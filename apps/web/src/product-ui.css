@@ -1060,7 +1060,7 @@ footer {
   background: var(--surface);
   border-radius: 10px;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   padding: 4px;
 }
 .source-tabs button {
@@ -1171,6 +1171,14 @@ footer {
   color: var(--muted);
   line-height: 1.5;
   text-align: center;
+}
+.generator-context {
+  line-height: 1.5;
+  min-height: 96px;
+  resize: vertical;
+}
+.csv-template-link {
+  justify-self: start;
 }
 
 /* Registration, email verification and account recovery */
@@ -1577,19 +1585,29 @@ footer {
 /* Dark theme: keep brand/game colors while replacing neutral surfaces. */
 html[data-theme="dark"] {
   --ink: #f3f5fa;
-  --muted: #aab1c0;
-  --line: #343948;
-  --surface: #1b1f2a;
+  --muted: #b7c0ce;
+  --line: #3a4252;
+  --surface: #141922;
   --purple-soft: #153640;
+  --page-bg: #0d1118;
+  --panel-bg: #181e28;
+  --panel-raised: #202734;
+  --panel-soft: #151b24;
+  --field-bg: #101620;
+  --text-primary: #f3f5fa;
+  --text-secondary: #b7c0ce;
+  --border-strong: #465064;
+  --focus-ring: rgba(85, 190, 214, 0.22);
   --shadow: 0 12px 36px rgba(0, 0, 0, 0.3);
-  background: #10131a;
+  background: var(--page-bg);
+  color-scheme: dark;
 }
 html[data-theme="dark"] body,
 html[data-theme="dark"] main,
 html[data-theme="dark"] footer,
 html[data-theme="dark"] .dashboard-main,
 html[data-theme="dark"] .host-page {
-  background-color: #10131a;
+  background-color: var(--page-bg);
   color: var(--ink);
 }
 html[data-theme="dark"] .header {
@@ -1611,7 +1629,7 @@ html[data-theme="dark"] .section-head > p {
 html[data-theme="dark"] .metrics,
 html[data-theme="dark"] .section,
 html[data-theme="dark"] .section.surface {
-  background-color: #10131a;
+  background-color: var(--page-bg);
   color: var(--ink);
 }
 html[data-theme="dark"] .metrics {
@@ -1647,7 +1665,7 @@ html[data-theme="dark"] .steps article p {
   color: #aab1c0;
 }
 html[data-theme="dark"] .steps article > span {
-  color: #555d70;
+  color: #78859a;
 }
 html[data-theme="dark"] .join-backdrop {
   background:
@@ -1696,6 +1714,7 @@ html[data-theme="dark"]
     .settings-card,
     .question-form,
     .question-list,
+    .quiz-settings,
     .editor-header,
     .join-flow-card,
     .game-top,
@@ -1709,11 +1728,8 @@ html[data-theme="dark"]
     .preview-questions > div,
     .generator-card
   ) {
-  background-color: #181c25;
+  background-color: var(--panel-bg);
   color: var(--ink);
-}
-html[data-theme="dark"] :where(label, h1, h2, h3, h4, p, b, strong) {
-  color: inherit;
 }
 html[data-theme="dark"] .game-page {
   background: linear-gradient(160deg, #101a1f, #132d35);
@@ -1769,6 +1785,12 @@ html[data-theme="dark"] .reset-card input::placeholder {
 html[data-theme="dark"] .demo-account,
 html[data-theme="dark"] .avatar-customizer {
   background: #102128;
+}
+html[data-theme="dark"] .demo-account b {
+  color: #edf7fa;
+}
+html[data-theme="dark"] .demo-account span {
+  color: #b7cbd2;
 }
 html[data-theme="dark"] .nickname-random-button {
   background: #153640;
@@ -1845,6 +1867,49 @@ html[data-theme="dark"] .generator-card .button-primary:disabled {
   color: #d7edf2;
   opacity: 0.82;
 }
+html[data-theme="dark"] .editor-page {
+  background: #10131a;
+  color: #f3f5fa;
+}
+html[data-theme="dark"] .editor-header,
+html[data-theme="dark"] .question-list,
+html[data-theme="dark"] .quiz-settings,
+html[data-theme="dark"] .question-form {
+  background: #181c25;
+  border-color: #343948;
+  color: #f3f5fa;
+}
+html[data-theme="dark"] .editor-page :where(label, h1, h2, h3, b, strong) {
+  color: #f3f5fa;
+}
+html[data-theme="dark"] .question-thumb {
+  color: #dfe5ee;
+}
+html[data-theme="dark"] .question-thumb:hover,
+html[data-theme="dark"] .question-thumb.active {
+  background: #153640;
+  border-color: #326275;
+}
+html[data-theme="dark"] .question-thumb > span,
+html[data-theme="dark"] .add-question {
+  background: #222735;
+  color: #8ed7e7;
+}
+html[data-theme="dark"] .option-row {
+  background: #11151d;
+  border-color: #3a4252;
+}
+html[data-theme="dark"] .option-row.correct {
+  background: #12352f;
+  border-color: #28715e;
+}
+html[data-theme="dark"] .correct-radio {
+  background: #2a3040;
+  color: #cbd2df;
+}
+html[data-theme="dark"] .question-toolbar label {
+  border-color: #3a4252;
+}
 html[data-theme="dark"] .lobby-settings,
 html[data-theme="dark"] .setting-toggle {
   background: #16272e;
@@ -1868,6 +1933,9 @@ html[data-theme="dark"] .intro-visual {
 html[data-theme="dark"] .intro-rank {
   border-color: #2b424b;
 }
+html[data-theme="dark"] .intro-rank strong {
+  color: #8ed7e7;
+}
 
 /* Game surfaces need explicit foreground colors instead of inheriting --ink. */
 html[data-theme="dark"] .qr-card {
@@ -1879,6 +1947,9 @@ html[data-theme="dark"] .qr-card :where(b, strong) {
 }
 html[data-theme="dark"] .qr-card :where(code, small) {
   color: #5f6673;
+}
+html[data-theme="dark"] .qr-card button {
+  color: #17677b;
 }
 html[data-theme="dark"] .player-bubble,
 html[data-theme="dark"] .people-count {
@@ -1902,27 +1973,51 @@ html[data-theme="dark"] .lobby-tips :where(b, span) {
 }
 
 html[data-theme="dark"] .question-stage {
-  background: #f8fafc;
-  color: #172033;
+  background: var(--panel-bg);
+  border: 1px solid var(--line);
+  color: var(--text-primary);
 }
 html[data-theme="dark"] .question-stage h1 {
-  color: #172033;
+  color: var(--text-primary);
 }
 html[data-theme="dark"] .answer-option {
-  background: #f1f4f8;
-  color: #344054;
+  background: var(--panel-raised);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
 }
 html[data-theme="dark"] .answer-option > span {
-  background: #ffffff;
-  color: var(--purple-dark);
+  background: #102f39;
+  color: #8ed7e7;
 }
 html[data-theme="dark"] .question-stage .question-explanation {
-  background: #eaf5f8;
-  border-color: #b9dce5;
-  color: #172033;
+  background: #132c35;
+  border-color: #2f5965;
+  color: var(--text-primary);
 }
 html[data-theme="dark"] .question-stage .question-explanation p {
-  color: #526071;
+  color: var(--text-secondary);
+}
+html[data-theme="dark"] .final-player {
+  background: linear-gradient(160deg, #101a1f, #132d35);
+  color: #edf7fa;
+}
+html[data-theme="dark"] .final-player h1,
+html[data-theme="dark"] .final-player .final-score strong,
+html[data-theme="dark"] .final-player .final-result-stats b {
+  color: #edf7fa;
+}
+html[data-theme="dark"] .final-player .leader-row {
+  color: #edf7fa;
+}
+html[data-theme="dark"] .final-player .leader-row:nth-child(-n + 3) {
+  background: #202833;
+}
+html[data-theme="dark"] .final-player .leader-row.self {
+  background: #153640;
+  outline-color: #326275;
+}
+html[data-theme="dark"] .final-player .leader-name b {
+  color: #edf7fa;
 }
 
 html[data-theme="dark"] .music-panel {
@@ -1993,6 +2088,417 @@ html[data-theme="dark"] .podium > div > i {
 html[data-theme="dark"] .podium-1 {
   background: linear-gradient(#3a3420, #19242d) !important;
   border-color: #75662c;
+}
+
+/*
+ * Dark-mode consistency layer.
+ * Component rules below deliberately win over legacy light-only surfaces while
+ * preserving semantic colors for success, warning, danger, QR and avatars.
+ */
+html[data-theme="dark"] body {
+  background: var(--page-bg);
+  color: var(--text-primary);
+}
+
+html[data-theme="dark"] ::selection {
+  background: #246f82;
+  color: #ffffff;
+}
+
+html[data-theme="dark"] :where(input, textarea, select) {
+  background: var(--field-bg);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+html[data-theme="dark"] :where(label, legend) {
+  color: var(--text-primary);
+}
+
+html[data-theme="dark"] :where(input, textarea)::placeholder {
+  color: #8591a3;
+  opacity: 1;
+}
+
+html[data-theme="dark"] :where(input, textarea, select):focus {
+  border-color: #55bed6;
+  box-shadow: 0 0 0 4px var(--focus-ring);
+}
+
+html[data-theme="dark"] .button-primary {
+  background: linear-gradient(135deg, #1d7f98, #16758d);
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .button-primary:hover {
+  background: linear-gradient(135deg, #248ca6, #1b8098);
+}
+
+html[data-theme="dark"] .button-danger {
+  background: #3a2023;
+  border: 1px solid #69383e;
+  color: #ff9b9f;
+}
+
+html[data-theme="dark"] .button-danger:hover {
+  background: #4a272c;
+  border-color: #8b4850;
+}
+
+html[data-theme="dark"] :where(.icon-button, .music-toggle) {
+  background: var(--panel-raised);
+  border-color: var(--line);
+  color: #c8d1de;
+}
+
+html[data-theme="dark"] :where(.icon-button, .music-toggle):hover {
+  background: #283242;
+  border-color: #526077;
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .nav-search kbd {
+  background: #28303e;
+  border: 1px solid #465064;
+  color: #dce3ed;
+}
+
+html[data-theme="dark"] .category-navigation button {
+  color: #b7c0ce;
+}
+
+html[data-theme="dark"] :where(.floating-rank, .category-row button) {
+  background: var(--panel-raised);
+  border-color: var(--line);
+  color: var(--text-primary);
+}
+
+html[data-theme="dark"] .category-navigation button:hover,
+html[data-theme="dark"] .category-navigation button.active {
+  color: #f3f5fa;
+}
+
+html[data-theme="dark"] .category-navigation button:hover .category-icon,
+html[data-theme="dark"]
+  .category-navigation
+  button:focus-visible
+  .category-icon {
+  background: color-mix(in srgb, var(--category-color, #2b9fbd) 34%, #18212c);
+}
+
+html[data-theme="dark"] .category-navigation button.active .category-icon {
+  background: color-mix(in srgb, var(--category-color, #2b9fbd) 42%, #18212c);
+}
+
+html[data-theme="dark"] .sidebar nav a {
+  color: #c5d5dc;
+}
+
+html[data-theme="dark"] .sidebar nav > span {
+  color: #77aebb;
+}
+
+html[data-theme="dark"] .sidebar-user {
+  border: 1px solid rgba(142, 215, 231, 0.12);
+}
+
+html[data-theme="dark"] .sidebar-user > div {
+  background: #1d7f98;
+}
+
+html[data-theme="dark"] .sidebar-user small {
+  color: #b8d8df;
+}
+
+html[data-theme="dark"] .segmented {
+  background: #151b24;
+  border-color: var(--line);
+}
+
+html[data-theme="dark"] .segmented button {
+  color: #aeb8c7;
+}
+
+html[data-theme="dark"] .segmented button.active {
+  background: #dff3f8;
+  color: #17677b;
+}
+
+html[data-theme="dark"] .ai-copy li b,
+html[data-theme="dark"] .preview-questions > div > span,
+html[data-theme="dark"] .question-analysis > div > span {
+  color: #8ed7e7;
+}
+
+html[data-theme="dark"] .source-tabs button.active {
+  color: #105a6d;
+}
+
+html[data-theme="dark"] .status.published {
+  background: #12352f;
+  color: #8be0c2;
+}
+
+html[data-theme="dark"] .status.draft {
+  background: #3a2c15;
+  color: #f4cf82;
+}
+
+html[data-theme="dark"] .status.archived {
+  background: #282f3c;
+  color: #c3ccda;
+}
+
+html[data-theme="dark"] .quiz-specialty b {
+  background: #3b291d;
+  color: #ffbf8b;
+}
+
+html[data-theme="dark"] .subcategory-row button {
+  background: var(--panel-raised);
+  border-color: var(--line);
+  color: var(--text-secondary);
+}
+
+html[data-theme="dark"] .subcategory-row button:hover,
+html[data-theme="dark"] .subcategory-row button.active {
+  background: #153640;
+  border-color: #55bed6;
+  color: #e8f8fb;
+}
+
+html[data-theme="dark"] .quiz-meta {
+  color: #aeb8c7;
+}
+
+html[data-theme="dark"] .practice-page {
+  background: var(--page-bg);
+}
+
+html[data-theme="dark"] .text-button.back {
+  color: #b8c2d0;
+}
+
+html[data-theme="dark"] .text-button.back:hover {
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .practice-progress {
+  background: #313949;
+}
+
+html[data-theme="dark"] .practice-card {
+  background: var(--panel-bg);
+  border-color: var(--line);
+  color: var(--text-primary);
+}
+
+html[data-theme="dark"] .practice-card h1 {
+  color: var(--text-primary);
+}
+
+html[data-theme="dark"] .practice-options button {
+  background: var(--panel-raised);
+  border-color: var(--line);
+  color: var(--text-primary);
+}
+
+html[data-theme="dark"] .practice-options button:hover:not(:disabled) {
+  background: #26303e;
+  border-color: #526077;
+}
+
+html[data-theme="dark"] .practice-options button > span {
+  background: #111924;
+  color: #a8dce7;
+}
+
+html[data-theme="dark"] .practice-options button.selected {
+  background: #153640;
+  border-color: #55bed6;
+}
+
+html[data-theme="dark"] .practice-options button.correct,
+html[data-theme="dark"] .practice-feedback.correct {
+  background: #12352f;
+  border-color: #2d8e70;
+  color: #dff8ef;
+}
+
+html[data-theme="dark"] .practice-options button.incorrect,
+html[data-theme="dark"] .practice-feedback.incorrect {
+  background: #3a2023;
+  border-color: #8b4850;
+  color: #ffd9db;
+}
+
+html[data-theme="dark"] .practice-feedback :where(p, strong) {
+  color: inherit;
+}
+
+html[data-theme="dark"] .report-stats > div {
+  background: var(--panel-bg);
+  border-color: var(--line);
+  color: var(--text-primary);
+}
+
+html[data-theme="dark"] .report-stats b {
+  color: var(--text-primary);
+}
+
+html[data-theme="dark"] .report-stats span {
+  color: var(--text-secondary);
+}
+
+html[data-theme="dark"] .report-card {
+  background: var(--panel-bg);
+  border-color: var(--line);
+}
+
+html[data-theme="dark"] .question-analysis strong.low {
+  color: #ff777d;
+}
+
+html[data-theme="dark"] :where(th, .public-meta span) {
+  color: #aeb8c7;
+}
+
+html[data-theme="dark"] td {
+  border-bottom-color: var(--line);
+}
+
+html[data-theme="dark"] .leader-row:nth-child(-n + 3) {
+  background: #232b37;
+  color: var(--text-primary);
+}
+
+html[data-theme="dark"] .leader-row.self {
+  background: #153640;
+  outline-color: #3b7d8d;
+}
+
+html[data-theme="dark"] .leader-name b,
+html[data-theme="dark"] .leader-row > strong {
+  color: var(--text-primary);
+}
+
+html[data-theme="dark"] .room-private-cover .button {
+  background: var(--panel-raised);
+  border-color: var(--line);
+  color: var(--text-primary);
+}
+
+html[data-theme="dark"] .room-privacy-toggle:hover,
+html[data-theme="dark"] .room-privacy-toggle.active {
+  background: #153640;
+  border-color: #55bed6;
+  color: #e8f8fb;
+}
+
+html[data-theme="dark"] .avatar-options button,
+html[data-theme="dark"] .avatar-options .accessory-options button {
+  background: #202936;
+  border-color: #465064;
+  color: #dce4ee;
+}
+
+html[data-theme="dark"] .avatar-options button:hover,
+html[data-theme="dark"] .avatar-options button.active {
+  background: #173d48;
+  border-color: #55bed6;
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .dev-code {
+  background: #3a2c15;
+  border-color: #80662d;
+  color: #f4cf82;
+}
+
+html[data-theme="dark"] .search-results > button:hover {
+  background: #26303e;
+  border-color: #526077;
+}
+
+html[data-theme="dark"] .search-results small,
+html[data-theme="dark"] .session-list small,
+html[data-theme="dark"] .settings-card small {
+  color: var(--text-secondary);
+}
+
+html[data-theme="dark"] .empty h3 {
+  color: var(--text-primary);
+}
+
+html[data-theme="dark"] .empty p {
+  color: var(--text-secondary);
+}
+
+html[data-theme="dark"] .public-cover {
+  background: #1d7f98 !important;
+}
+
+html[data-theme="dark"] .toast {
+  background: #172d36;
+  border: 1px solid #356678;
+  color: #e6f7fa;
+}
+
+html[data-theme="dark"] .game-loading {
+  background: var(--page-bg);
+  color: var(--text-primary);
+}
+
+html[data-theme="dark"] .answer-option:hover:not(:disabled),
+html[data-theme="dark"] .answer-option.selected {
+  background: #153640;
+  border-color: #55bed6;
+}
+
+html[data-theme="dark"] .answer-option.correct {
+  background: #12352f !important;
+  border-color: #2d8e70 !important;
+  color: #dff8ef !important;
+}
+
+html[data-theme="dark"] .answer-option.wrong {
+  background: #3a2023 !important;
+  border-color: #a7535b !important;
+  color: #ffd9db !important;
+}
+
+html[data-theme="dark"] .answer-option.correct > span {
+  background: #174a3d;
+  color: #a7f3d0;
+}
+
+html[data-theme="dark"] .answer-option.wrong > span {
+  background: #4a2528;
+  color: #fecdd3;
+}
+
+html[data-theme="dark"] .answer-result.correct {
+  background: #12352f;
+  border: 1px solid #2d8e70;
+  color: #dff8ef;
+}
+
+html[data-theme="dark"] .answer-result.wrong {
+  background: #3a2023;
+  border: 1px solid #a7535b;
+  color: #ffd9db;
+}
+
+html[data-theme="dark"] .answer-result.correct > span {
+  background: #1f9d72;
+}
+
+html[data-theme="dark"] .answer-result.wrong > span {
+  background: #e64b43;
+}
+
+html[data-theme="dark"] .countdown::before {
+  background: var(--panel-bg);
 }
 
 @media (max-width: 900px) {
