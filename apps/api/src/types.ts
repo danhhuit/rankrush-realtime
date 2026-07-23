@@ -18,6 +18,7 @@ export interface User {
   displayName: string;
   passwordHash: string;
   role: "HOST" | "ADMIN";
+  status?: "ACTIVE" | "SUSPENDED";
   createdAt: string;
 }
 export interface QuizSettings {

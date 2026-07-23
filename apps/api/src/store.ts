@@ -81,6 +81,7 @@ export const keys = {
   answers: (id: string) => key("session", `{${id}}`, "answers"),
   events: (id: string) => key("events", `{${id}}`),
   phaseLock: (id: string) => key("session", `{${id}}`, "phase-lock"),
+  adminEvents: key("admin", "events"),
 };
 
 export async function createUser(user: User) {
@@ -144,6 +145,14 @@ export async function getUserByUsername(username: string) {
     .hset(keys.user(match.id), "username", normalized)
     .exec();
   return { ...match, username: normalized };
+}
+
+export async function listUsers() {
+  const ids = await redis.smembers(keys.users);
+  const users = await Promise.all(ids.map((id) => getUser(id)));
+  return users
+    .filter((user): user is User => Boolean(user))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export async function saveQuiz(quiz: Quiz) {
@@ -281,7 +290,21 @@ export async function createSession(input: Omit<GameSession, "pin">) {
       .multi()
       .hset(keys.session(session.id), encode(session))
       .sadd(keys.sessions, session.id)
+      .xadd(
+        keys.events(session.id),
+        "MAXLEN",
+        "~",
+        5000,
+        "*",
+        "type",
+        "SESSION_CREATED",
+        "hostId",
+        session.hostId,
+        "at",
+        session.createdAt,
+      )
       .expire(keys.session(session.id), config.SESSION_TTL_SECONDS)
+      .expire(keys.events(session.id), config.SESSION_TTL_SECONDS)
       .exec();
     return session;
   } catch (error) {
@@ -323,6 +346,22 @@ export async function updateSession(id: string, patch: Partial<GameSession>) {
   if (patch.state === "ENDED" || patch.state === "CANCELLED")
     tx.del(keys.sessionPin(pin));
   else tx.expire(keys.sessionPin(pin), config.JOIN_CODE_TTL_SECONDS);
+  if (patch.state && patch.state !== current.state)
+    tx.xadd(
+      keys.events(id),
+      "MAXLEN",
+      "~",
+      5000,
+      "*",
+      "type",
+      "SESSION_STATE_CHANGED",
+      "from",
+      current.state,
+      "to",
+      patch.state,
+      "at",
+      new Date().toISOString(),
+    );
   await tx.exec();
   return getSession(id);
 }

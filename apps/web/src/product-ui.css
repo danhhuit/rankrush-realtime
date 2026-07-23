@@ -1500,7 +1500,8 @@ footer {
   gap: 7px;
 }
 .language-control,
-.theme-toggle {
+.theme-toggle,
+.theme-control {
   align-items: center;
   background: var(--surface);
   border: 1px solid var(--line);
@@ -1515,11 +1516,13 @@ footer {
   padding-left: 9px;
 }
 .language-control > svg,
-.theme-toggle > svg {
+.theme-toggle > svg,
+.theme-control > svg {
   height: 17px;
   width: 17px;
 }
-.language-control select {
+.language-control select,
+.theme-control select {
   appearance: none;
   background: transparent;
   border: 0;
@@ -1531,18 +1534,28 @@ footer {
   padding: 0 8px 0 4px;
   width: auto;
 }
+.theme-control {
+  flex-direction: row;
+  gap: 2px;
+  padding-left: 9px;
+}
+.theme-control select {
+  max-width: 118px;
+}
 .theme-toggle {
   justify-content: center;
   padding: 0;
   width: 40px;
 }
 .theme-toggle:hover,
+.theme-control:hover,
 .language-control:hover {
   border-color: var(--purple);
   color: var(--purple);
 }
 .preference-controls.compact .language-control,
-.preference-controls.compact .theme-toggle {
+.preference-controls.compact .theme-toggle,
+.preference-controls.compact .theme-control {
   background: rgba(255, 255, 255, 0.1);
   border-color: rgba(127, 127, 127, 0.25);
 }
@@ -1696,6 +1709,7 @@ html[data-theme="dark"]
     .settings-card,
     .question-form,
     .question-list,
+    .quiz-settings,
     .editor-header,
     .join-flow-card,
     .game-top,
@@ -1724,8 +1738,29 @@ html[data-theme="dark"] .host-bar {
 html[data-theme="dark"] .nav-search,
 html[data-theme="dark"] .nav-pin,
 html[data-theme="dark"] .language-control,
-html[data-theme="dark"] .theme-toggle {
+html[data-theme="dark"] .theme-toggle,
+html[data-theme="dark"] .theme-control {
   background: #1b1f2a;
+}
+html[data-theme="dark"] .quiz-settings {
+  border-color: var(--line);
+}
+html[data-theme="dark"] .question-thumb > span,
+html[data-theme="dark"] .add-question {
+  background: #222735;
+  border-color: #41495a;
+  color: #79cfe1;
+}
+html[data-theme="dark"] .question-thumb:hover,
+html[data-theme="dark"] .question-thumb.active {
+  border-color: #356875;
+}
+html[data-theme="dark"] .option-row {
+  background: #141923;
+}
+html[data-theme="dark"] .option-row.correct {
+  background: #12342d;
+  border-color: #2f866f;
 }
 html[data-theme="dark"] .button-secondary,
 html[data-theme="dark"] .button-ghost {

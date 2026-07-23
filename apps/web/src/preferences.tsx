@@ -9,6 +9,7 @@ import {
 
 export type Locale = "vi" | "en";
 export type Theme = "light" | "dark";
+export type ThemePreference = Theme | "system";
 
 const messages = {
   vi: {
@@ -22,6 +23,10 @@ const messages = {
     logout: "Đăng xuất",
     login: "Đăng nhập",
     language: "Ngôn ngữ",
+    appearance: "Giao diện",
+    systemTheme: "Theo hệ thống",
+    lightTheme: "Sáng",
+    darkTheme: "Tối",
     lightMode: "Chuyển sang giao diện sáng",
     darkMode: "Chuyển sang giao diện tối",
     searchPlaceholder: "Tìm theo tên hoặc danh mục...",
@@ -106,6 +111,10 @@ const messages = {
     logout: "Log out",
     login: "Log in",
     language: "Language",
+    appearance: "Appearance",
+    systemTheme: "System",
+    lightTheme: "Light",
+    darkTheme: "Dark",
     lightMode: "Switch to light mode",
     darkMode: "Switch to dark mode",
     searchPlaceholder: "Search by name or category...",
@@ -187,20 +196,39 @@ type PreferencesValue = {
   locale: Locale;
   setLocale: (locale: Locale) => void;
   theme: Theme;
-  setTheme: (theme: Theme) => void;
-  toggleTheme: () => void;
+  themePreference: ThemePreference;
+  setThemePreference: (theme: ThemePreference) => void;
   t: (key: MessageKey) => string;
   tr: (vi: string, en: string) => string;
 };
 
 const PreferencesContext = createContext<PreferencesValue | null>(null);
 
-function initialTheme(): Theme {
-  const saved = localStorage.getItem("rr_theme");
-  if (saved === "light" || saved === "dark") return saved;
+export function normalizeThemePreference(
+  value: string | null,
+): ThemePreference {
+  if (value === "system" || value === "light" || value === "dark") {
+    return value;
+  }
+  return "system";
+}
+
+export function resolveTheme(
+  preference: ThemePreference,
+  systemTheme: Theme,
+): Theme {
+  return preference === "system" ? systemTheme : preference;
+}
+
+function getSystemTheme(): Theme {
   return window.matchMedia?.("(prefers-color-scheme: dark)").matches
     ? "dark"
     : "light";
+}
+
+function initialThemePreference(): ThemePreference {
+  const saved = localStorage.getItem("rr_theme");
+  return normalizeThemePreference(saved);
 }
 
 function initialLocale(): Locale {
@@ -211,7 +239,11 @@ function initialLocale(): Locale {
 
 export function PreferencesProvider({ children }: { children: ReactNode }) {
   const [locale, setLocale] = useState<Locale>(initialLocale);
-  const [theme, setTheme] = useState<Theme>(initialTheme);
+  const [themePreference, setThemePreference] = useState<ThemePreference>(
+    initialThemePreference,
+  );
+  const [systemTheme, setSystemTheme] = useState<Theme>(getSystemTheme);
+  const theme = resolveTheme(themePreference, systemTheme);
 
   useEffect(() => {
     localStorage.setItem("rr_locale", locale);
@@ -219,23 +251,36 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
   }, [locale]);
 
   useEffect(() => {
-    localStorage.setItem("rr_theme", theme);
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const updateSystemTheme = (event: MediaQueryListEvent | MediaQueryList) =>
+      setSystemTheme(event.matches ? "dark" : "light");
+
+    updateSystemTheme(media);
+    media.addEventListener("change", updateSystemTheme);
+    return () => media.removeEventListener("change", updateSystemTheme);
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("rr_theme", themePreference);
     document.documentElement.dataset.theme = theme;
+    document.documentElement.dataset.themePreference = themePreference;
     document.documentElement.style.colorScheme = theme;
-  }, [theme]);
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute("content", theme === "dark" ? "#10131a" : "#ffffff");
+  }, [theme, themePreference]);
 
   const value = useMemo<PreferencesValue>(
     () => ({
       locale,
       setLocale,
       theme,
-      setTheme,
-      toggleTheme: () =>
-        setTheme((current) => (current === "dark" ? "light" : "dark")),
+      themePreference,
+      setThemePreference,
       t: (key) => messages[locale][key],
       tr: (vi, en) => (locale === "vi" ? vi : en),
     }),
-    [locale, theme],
+    [locale, theme, themePreference],
   );
 
   return (

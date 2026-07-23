@@ -170,12 +170,13 @@ async function seed() {
   await clearNamespace();
   const now = new Date().toISOString();
   const user: User = {
-    id: "host-danhtn",
-    username: "danhtn",
-    email: "danhtn@rankrush.local",
-    displayName: "Thành Danh",
-    passwordHash: await bcrypt.hash("RankRush@123", 12),
+    id: "host-admin",
+    username: "admin",
+    email: "admin@rankrush.local",
+    displayName: "Quản trị viên",
+    passwordHash: await bcrypt.hash("@dmin123", 12),
     role: "ADMIN",
+    status: "ACTIVE",
     createdAt: now,
   };
   await createUser(user);
@@ -615,7 +616,7 @@ async function seed() {
   console.log(
     "Seed hoàn tất: 60 Player + 12 Quiz + 44 Question + 4 Session + 12 Answer = 132 bản ghi logic",
   );
-  console.log("Host demo: danhtn@rankrush.local / RankRush@123");
+  console.log("Admin demo: admin / @dmin123");
 }
 seed()
   .catch((e) => {

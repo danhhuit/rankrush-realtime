@@ -43,6 +43,7 @@ import {
   Medal,
   Maximize2,
   Menu,
+  Monitor,
   Moon,
   Music2,
   Palette,
@@ -83,6 +84,7 @@ import {
 } from "react-router-dom";
 import { io, type Socket } from "socket.io-client";
 import { ApiError, hostToken, playerToken, request } from "./api";
+import AdminPage from "./AdminPage";
 import { AvatarCustomizer, defaultAvatar, PlayerAvatar } from "./PlayerAvatar";
 import { usePreferences } from "./preferences";
 import type {
@@ -458,7 +460,8 @@ function Logo() {
   );
 }
 function PreferenceControls({ compact = false }: { compact?: boolean }) {
-  const { locale, setLocale, theme, toggleTheme, t } = usePreferences();
+  const { locale, setLocale, theme, themePreference, setThemePreference, t } =
+    usePreferences();
   return (
     <div className={cx("preference-controls", compact && "compact")}>
       <label className="language-control" title={t("language")}>
@@ -472,15 +475,28 @@ function PreferenceControls({ compact = false }: { compact?: boolean }) {
           <option value="en">EN</option>
         </select>
       </label>
-      <button
-        type="button"
-        className="theme-toggle"
-        onClick={toggleTheme}
-        title={theme === "dark" ? t("lightMode") : t("darkMode")}
-        aria-label={theme === "dark" ? t("lightMode") : t("darkMode")}
-      >
-        {theme === "dark" ? <Sun /> : <Moon />}
-      </button>
+      <label className="theme-control" title={t("appearance")}>
+        {themePreference === "system" ? (
+          <Monitor />
+        ) : theme === "dark" ? (
+          <Moon />
+        ) : (
+          <Sun />
+        )}
+        <select
+          value={themePreference}
+          onChange={(event) =>
+            setThemePreference(
+              event.target.value as "system" | "light" | "dark",
+            )
+          }
+          aria-label={t("appearance")}
+        >
+          <option value="system">{t("systemTheme")}</option>
+          <option value="light">{t("lightTheme")}</option>
+          <option value="dark">{t("darkTheme")}</option>
+        </select>
+      </label>
     </div>
   );
 }
@@ -1285,17 +1301,17 @@ function Auth({ mode }: { mode: "login" | "register" }) {
     setBusy(true);
     setError("");
     try {
-      const data = await request<{ token: string; user: unknown }>(
-        `/auth/${mode}`,
-        {
-          method: "POST",
-          body: JSON.stringify(
-            mode === "login"
-              ? { identifier: form.identifier, password: form.password }
-              : form,
-          ),
-        },
-      );
+      const data = await request<{
+        token: string;
+        user: { role?: "HOST" | "ADMIN" };
+      }>(`/auth/${mode}`, {
+        method: "POST",
+        body: JSON.stringify(
+          mode === "login"
+            ? { identifier: form.identifier, password: form.password }
+            : form,
+        ),
+      });
       localStorage.setItem("rr_host_token", data.token);
       localStorage.setItem("rr_user", JSON.stringify(data.user));
       const pendingQuiz = sessionStorage.getItem("rr_pending_host_quiz");
@@ -1305,7 +1321,7 @@ function Auth({ mode }: { mode: "login" | "register" }) {
         nav(`/host/${room.id}`);
         return;
       }
-      nav("/dashboard");
+      nav(data.user.role === "ADMIN" ? "/admin" : "/dashboard");
     } catch (e) {
       setError(
         e instanceof Error
@@ -1545,9 +1561,9 @@ function Auth({ mode }: { mode: "login" | "register" }) {
           </p>
           {mode === "login" && (
             <div className="demo-account">
-              <b>{tr("Tài khoản demo", "Demo account")}</b>
-              <span>danhtn@rankrush.local</span>
-              <span>RankRush@123</span>
+              <b>{tr("Tài khoản Admin", "Admin account")}</b>
+              <span>admin</span>
+              <span>@dmin123</span>
             </div>
           )}
         </div>
@@ -1890,6 +1906,7 @@ function Dashboard() {
     try {
       return JSON.parse(localStorage.getItem("rr_user") || "{}") as {
         displayName?: string;
+        role?: "HOST" | "ADMIN";
       };
     } catch {
       return {};
@@ -1907,9 +1924,10 @@ function Dashboard() {
       .catch((error) => toast.show((error as Error).message))
       .finally(() => setLoading(false));
   useEffect(() => {
-    if (token) void load();
+    if (token && user.role !== "ADMIN") void load();
   }, []);
   if (!token) return <Navigate to="/login" />;
+  if (user.role === "ADMIN") return <Navigate to="/admin" replace />;
   const visibleQuizzes = quizzes.filter(
     (quiz) => statusFilter === "ALL" || quiz.status === statusFilter,
   );
@@ -2225,6 +2243,18 @@ function DashboardWorkspace({
   children: ReactNode;
 }) {
   if (!hostToken()) return <Navigate to="/login" />;
+  try {
+    const user = JSON.parse(localStorage.getItem("rr_user") || "{}") as {
+      role?: "HOST" | "ADMIN";
+    };
+    if (user.role === "ADMIN")
+      return (
+        <Navigate
+          to={active === "ai" ? "/admin/assistant" : "/admin"}
+          replace
+        />
+      );
+  } catch {}
   return (
     <div className="dashboard-shell dashboard-standalone">
       <DashboardSideNav active={active} />
@@ -3084,6 +3114,7 @@ function Editor() {
           </span>
         </div>
         <div className="editor-header-actions">
+          <PreferenceControls compact />
           <button
             className="button button-secondary"
             onClick={() => nav(`/quiz/${quiz.id}`)}
@@ -6077,6 +6108,7 @@ export default function App() {
         <Route path="/dashboard/reports" element={<ReportsPage />} />
         <Route path="/dashboard/leaderboards" element={<LeaderboardsPage />} />
         <Route path="/dashboard/settings" element={<SettingsPage />} />
+        <Route path="/admin/*" element={<AdminPage />} />
         <Route path="/ai-create" element={<AiCreatePage />} />
         <Route path="/editor/:id" element={<Editor />} />
         <Route path="/join" element={<Join />} />

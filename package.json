@@ -11,6 +11,7 @@
     "test": "npm run test -w @rankrush/api && npm run test -w @rankrush/web",
     "seed": "npm run seed -w @rankrush/api",
     "seed:library": "npm run seed:library -w @rankrush/api",
+    "admin:setup": "npm run admin:setup -w @rankrush/api",
     "lint": "npm run lint -w @rankrush/api && npm run lint -w @rankrush/web"
   },
   "devDependencies": {
