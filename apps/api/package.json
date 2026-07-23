@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "seed": "tsx src/seed.ts",
     "seed:library": "tsx src/seed-library.ts",
+    "admin:setup": "tsx src/ensure-admin.ts",
     "test": "vitest run",
     "lint": "tsc -p tsconfig.json --noEmit"
   },

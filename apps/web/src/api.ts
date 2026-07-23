@@ -1,5 +1,9 @@
 const API = "/api";
 const englishErrors: Record<string, string> = {
+  ACCOUNT_SUSPENDED: "This account has been suspended.",
+  ADMIN_REQUIRED: "Administrator access is required.",
+  ADMIN_SELF_PROTECTED:
+    "You cannot change your own administrator account here.",
   CORS_ORIGIN_DENIED: "This website origin is not allowed.",
   CURRENT_PASSWORD_INVALID: "Your current password is incorrect.",
   EMAIL_EXISTS: "This email address is already in use.",
@@ -23,6 +27,8 @@ const englishErrors: Record<string, string> = {
   LOGIN_FAILED: "Username/email or password is incorrect.",
   LOGIN_RATE_LIMITED:
     "Too many failed login attempts. Try again in 15 minutes.",
+  LAST_ADMIN_PROTECTED:
+    "The last active administrator cannot be demoted or suspended.",
   NICKNAME_EXISTS: "This nickname is already being used in the room.",
   PDF_TEXT_EMPTY: "No readable text was found in this PDF.",
   PIN_NOT_FOUND: "The PIN does not exist or has expired.",

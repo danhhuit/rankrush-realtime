@@ -6,6 +6,7 @@ import { PreferencesProvider } from "./preferences";
 import "./styles.css";
 import "./lobby-settings.css";
 import "./product-ui.css";
+import "./admin.css";
 
 const router = createBrowserRouter([{ path: "*", element: <App /> }]);
 

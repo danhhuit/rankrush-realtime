@@ -108,8 +108,8 @@ npm run dev
 Tài khoản demo sau khi seed:
 
 ```text
-Email:    danhtn@rankrush.local
-Password: RankRush@123
+Username: admin
+Password: @dmin123
 ```
 
 Seed chính tạo 132 bản ghi logic và có thể chạy lại vì chỉ làm mới namespace
@@ -219,3 +219,6 @@ Git.
 
 Xem [docs/FEATURES_AND_TECH.md](docs/FEATURES_AND_TECH.md) để biết state machine,
 cách tính điểm, kiến trúc Redis, API, bảo mật và checklist kiểm thử nghiệm thu.
+
+Hướng dẫn vận hành khu vực quản trị nằm tại
+[docs/ADMIN_CONSOLE.md](docs/ADMIN_CONSOLE.md).

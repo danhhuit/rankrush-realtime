@@ -19,6 +19,7 @@ import { Server } from "socket.io";
 import { z } from "zod";
 import {
   optionalAuth,
+  requireAdmin,
   requireHost,
   requirePlayer,
   signHost,
@@ -67,6 +68,7 @@ import {
   listQuestions,
   listQuizzes,
   listSessions,
+  listUsers,
   removePlayer,
   saveQuestion,
   saveQuiz,
@@ -678,6 +680,7 @@ app.post(
       email,
       passwordHash: await bcrypt.hash(data.password, 12),
       role: "HOST",
+      status: "ACTIVE",
       createdAt: new Date().toISOString(),
     };
     await createUser(user);
@@ -732,6 +735,11 @@ app.post(
         },
       );
     }
+    if (user.status === "SUSPENDED")
+      throw Object.assign(
+        new Error("Tài khoản đã bị tạm khóa. Vui lòng liên hệ quản trị viên."),
+        { status: 403, code: "ACCOUNT_SUSPENDED" },
+      );
     await redis.del(attemptsKey);
     res.json({
       token: signHost({ sub: user.id, email: user.email, role: user.role }),
@@ -895,6 +903,374 @@ app.put(
       email: updated.email,
       displayName: updated.displayName,
       role: updated.role,
+    });
+  }),
+);
+
+async function currentAdmin(req: Request) {
+  const user = await getUser(authId(req));
+  if (!user || user.role !== "ADMIN" || user.status === "SUSPENDED")
+    throw Object.assign(new Error("Tài khoản không còn quyền quản trị viên."), {
+      status: 403,
+      code: "ADMIN_REQUIRED",
+    });
+  return user;
+}
+
+function publicAdminUser(user: User) {
+  return {
+    id: user.id,
+    username: user.username || "",
+    email: user.email,
+    displayName: user.displayName,
+    role: user.role,
+    status: user.status || "ACTIVE",
+    createdAt: user.createdAt,
+  };
+}
+
+async function sessionAdminRow(session: GameSession) {
+  const [quiz, host, playerCount] = await Promise.all([
+    getQuiz(session.quizId),
+    getUser(session.hostId),
+    redis.scard(keys.sessionPlayers(session.id)),
+  ]);
+  return {
+    ...session,
+    quiz: quiz
+      ? { id: quiz.id, title: quiz.title, category: quiz.category }
+      : null,
+    host: host
+      ? {
+          id: host.id,
+          displayName: host.displayName,
+          username: host.username || "",
+          email: host.email,
+        }
+      : null,
+    playerCount,
+  };
+}
+
+function streamFields(values: string[]) {
+  const result: Record<string, string> = {};
+  for (let index = 0; index < values.length; index += 2)
+    result[values[index]!] = values[index + 1] || "";
+  return result;
+}
+
+function redisInfoValue(info: string, field: string) {
+  const line = info.split("\n").find((entry) => entry.startsWith(`${field}:`));
+  return line?.slice(field.length + 1).trim() || "";
+}
+
+async function namespaceStats() {
+  let cursor = "0";
+  const typeCounts: Record<string, number> = {};
+  let keyCount = 0;
+  do {
+    const [nextCursor, found] = await redis.scan(
+      cursor,
+      "MATCH",
+      `${config.REDIS_PREFIX}:*`,
+      "COUNT",
+      500,
+    );
+    cursor = nextCursor;
+    keyCount += found.length;
+    if (found.length) {
+      const pipeline = redis.pipeline();
+      found.forEach((redisKey) => pipeline.type(redisKey));
+      const rows = await pipeline.exec();
+      for (const [, value] of rows || []) {
+        const type = String(value || "unknown");
+        typeCounts[type] = (typeCounts[type] || 0) + 1;
+      }
+    }
+  } while (cursor !== "0");
+  return { keyCount, typeCounts };
+}
+
+app.get(
+  "/api/admin/overview",
+  requireAdmin,
+  asyncRoute(async (req, res) => {
+    await currentAdmin(req);
+    const [users, sessions, quizIds] = await Promise.all([
+      listUsers(),
+      listSessions(),
+      redis.smembers(keys.quizzes),
+    ]);
+    const questionPipeline = redis.pipeline();
+    quizIds.forEach((id) => questionPipeline.llen(keys.quizQuestions(id)));
+    const playerPipeline = redis.pipeline();
+    sessions.forEach((session) => {
+      playerPipeline.scard(keys.sessionPlayers(session.id));
+      playerPipeline.scard(keys.answers(session.id));
+    });
+    const [questionRows, playerRows, publicQuizCount] = await Promise.all([
+      questionPipeline.exec(),
+      playerPipeline.exec(),
+      redis.zcard(keys.publicQuizzes),
+    ]);
+    const questionCount = (questionRows || []).reduce(
+      (sum, [, value]) => sum + Number(value || 0),
+      0,
+    );
+    let playerCount = 0;
+    let answerCount = 0;
+    for (let index = 0; index < (playerRows || []).length; index += 2) {
+      playerCount += Number(playerRows?.[index]?.[1] || 0);
+      answerCount += Number(playerRows?.[index + 1]?.[1] || 0);
+    }
+    const activeSessions = sessions.filter(
+      (session) => !["ENDED", "CANCELLED"].includes(session.state),
+    );
+    res.json({
+      stats: {
+        users: users.length,
+        admins: users.filter((user) => user.role === "ADMIN").length,
+        quizzes: quizIds.length,
+        publicQuizzes: publicQuizCount,
+        questions: questionCount,
+        sessions: sessions.length,
+        activeSessions: activeSessions.length,
+        players: playerCount,
+        answers: answerCount,
+      },
+      recentUsers: users.slice(0, 6).map(publicAdminUser),
+      recentSessions: await Promise.all(
+        sessions.slice(0, 6).map(sessionAdminRow),
+      ),
+    });
+  }),
+);
+
+app.get(
+  "/api/admin/users",
+  requireAdmin,
+  asyncRoute(async (req, res) => {
+    await currentAdmin(req);
+    const query = String(req.query.q || "")
+      .trim()
+      .toLocaleLowerCase("vi-VN");
+    const role = z
+      .enum(["ALL", "HOST", "ADMIN"])
+      .default("ALL")
+      .parse(String(req.query.role || "ALL"));
+    const [users, sessions] = await Promise.all([listUsers(), listSessions()]);
+    const quizPipeline = redis.pipeline();
+    users.forEach((user) => quizPipeline.scard(keys.userQuizzes(user.id)));
+    const quizCounts = await quizPipeline.exec();
+    const rows = users.map((user, index) => ({
+      ...publicAdminUser(user),
+      quizCount: Number(quizCounts?.[index]?.[1] || 0),
+      sessionCount: sessions.filter((session) => session.hostId === user.id)
+        .length,
+    }));
+    res.json(
+      rows.filter(
+        (user) =>
+          (role === "ALL" || user.role === role) &&
+          (!query ||
+            `${user.displayName} ${user.username} ${user.email}`
+              .toLocaleLowerCase("vi-VN")
+              .includes(query)),
+      ),
+    );
+  }),
+);
+
+app.patch(
+  "/api/admin/users/:id",
+  requireAdmin,
+  asyncRoute(async (req, res) => {
+    const admin = await currentAdmin(req);
+    const target = await getUser(req.params.id);
+    if (!target)
+      throw Object.assign(new Error("Không tìm thấy người dùng."), {
+        status: 404,
+      });
+    const patch = z
+      .object({
+        role: z.enum(["HOST", "ADMIN"]).optional(),
+        status: z.enum(["ACTIVE", "SUSPENDED"]).optional(),
+      })
+      .refine((value) => value.role || value.status, {
+        message: "Không có thay đổi cần lưu.",
+      })
+      .parse(req.body);
+    const nextRole = patch.role || target.role;
+    const nextStatus = patch.status || target.status || "ACTIVE";
+    if (
+      target.id === admin.id &&
+      (nextRole !== "ADMIN" || nextStatus !== "ACTIVE")
+    )
+      throw Object.assign(
+        new Error("Bạn không thể tự hạ quyền hoặc khóa tài khoản của mình."),
+        { status: 409, code: "ADMIN_SELF_PROTECTED" },
+      );
+    if (
+      target.role === "ADMIN" &&
+      (nextRole !== "ADMIN" || nextStatus === "SUSPENDED")
+    ) {
+      const users = await listUsers();
+      const activeAdmins = users.filter(
+        (user) =>
+          user.role === "ADMIN" && (user.status || "ACTIVE") === "ACTIVE",
+      );
+      if (activeAdmins.length <= 1)
+        throw Object.assign(
+          new Error("Hệ thống phải còn ít nhất một quản trị viên hoạt động."),
+          { status: 409, code: "LAST_ADMIN_PROTECTED" },
+        );
+    }
+    await redis
+      .multi()
+      .hset(keys.user(target.id), { role: nextRole, status: nextStatus })
+      .xadd(
+        keys.adminEvents,
+        "MAXLEN",
+        "~",
+        2000,
+        "*",
+        "type",
+        "USER_UPDATED",
+        "adminId",
+        admin.id,
+        "targetId",
+        target.id,
+        "role",
+        nextRole,
+        "status",
+        nextStatus,
+        "at",
+        new Date().toISOString(),
+      )
+      .exec();
+    res.json(
+      publicAdminUser({
+        ...target,
+        role: nextRole,
+        status: nextStatus,
+      }),
+    );
+  }),
+);
+
+app.get(
+  "/api/admin/sessions",
+  requireAdmin,
+  asyncRoute(async (req, res) => {
+    await currentAdmin(req);
+    const state = String(req.query.state || "ALL");
+    const sessions = await listSessions();
+    const filtered = sessions.filter(
+      (session) => state === "ALL" || session.state === state,
+    );
+    res.json(await Promise.all(filtered.map(sessionAdminRow)));
+  }),
+);
+
+app.get(
+  "/api/admin/activity",
+  requireAdmin,
+  asyncRoute(async (req, res) => {
+    await currentAdmin(req);
+    const limit = z.coerce
+      .number()
+      .int()
+      .min(10)
+      .max(200)
+      .default(80)
+      .parse(req.query.limit);
+    const sessions = await listSessions();
+    const recentSessions = sessions.slice(0, 40);
+    const eventRows = await Promise.all(
+      recentSessions.map(async (session) => ({
+        session,
+        rows: await redis.xrevrange(
+          keys.events(session.id),
+          "+",
+          "-",
+          "COUNT",
+          Math.min(30, limit),
+        ),
+      })),
+    );
+    const adminRows = await redis.xrevrange(
+      keys.adminEvents,
+      "+",
+      "-",
+      "COUNT",
+      limit,
+    );
+    const activity = eventRows.flatMap(({ session, rows }) =>
+      rows.map(([id, values]) => {
+        const fields = streamFields(values);
+        return {
+          id: `${session.id}:${id}`,
+          scope: "SESSION",
+          sessionId: session.id,
+          type: fields.type || "UNKNOWN",
+          at: fields.at || new Date(Number(id.split("-")[0])).toISOString(),
+          details: fields,
+        };
+      }),
+    );
+    activity.push(
+      ...adminRows.map(([id, values]) => {
+        const fields = streamFields(values);
+        return {
+          id: `admin:${id}`,
+          scope: "ADMIN",
+          sessionId: "",
+          type: fields.type || "UNKNOWN",
+          at: fields.at || new Date(Number(id.split("-")[0])).toISOString(),
+          details: fields,
+        };
+      }),
+    );
+    activity.sort((a, b) => b.at.localeCompare(a.at));
+    res.json(activity.slice(0, limit));
+  }),
+);
+
+app.get(
+  "/api/admin/system",
+  requireAdmin,
+  asyncRoute(async (req, res) => {
+    await currentAdmin(req);
+    const [serverInfo, memoryInfo, clientsInfo, statsInfo, keyStats, dbSize] =
+      await Promise.all([
+        redis.info("server"),
+        redis.info("memory"),
+        redis.info("clients"),
+        redis.info("stats"),
+        namespaceStats(),
+        redis.dbsize(),
+      ]);
+    res.json({
+      redis: {
+        version: redisInfoValue(serverInfo, "redis_version"),
+        mode: redisInfoValue(serverInfo, "redis_mode"),
+        uptimeSeconds: Number(
+          redisInfoValue(serverInfo, "uptime_in_seconds") || 0,
+        ),
+        usedMemory: redisInfoValue(memoryInfo, "used_memory_human"),
+        peakMemory: redisInfoValue(memoryInfo, "used_memory_peak_human"),
+        connectedClients: Number(
+          redisInfoValue(clientsInfo, "connected_clients") || 0,
+        ),
+        totalCommands: Number(
+          redisInfoValue(statsInfo, "total_commands_processed") || 0,
+        ),
+      },
+      namespace: config.REDIS_PREFIX,
+      namespaceKeys: keyStats.keyCount,
+      totalDatabaseKeys: dbSize,
+      typeCounts: keyStats.typeCounts,
+      checkedAt: new Date().toISOString(),
     });
   }),
 );
@@ -1116,24 +1492,38 @@ app.post(
     const input = z
       .object({
         subject: z.string().trim().max(160).default(""),
+<<<<<<< HEAD
         context: z.string().trim().max(2_000).default(""),
+=======
+        sourceText: z.string().trim().max(30_000).default(""),
+>>>>>>> 979bc34374fff67edfb6d55e9f9dbd30bf107e64
         title: z.string().trim().max(120).default(""),
         category: z.string().trim().max(50).default("Giáo dục"),
         questionCount: z.coerce.number().int().min(3).max(15).default(5),
+        timeLimitSec: z.coerce.number().int().min(5).max(300).default(20),
+        basePoints: z.coerce.number().int().min(100).max(5000).default(600),
         language: z.enum(["vi", "en"]).default("vi"),
         difficulty: z.enum(["EASY", "MEDIUM", "HARD"]).default("MEDIUM"),
       })
       .parse(req.body);
-    if (!input.subject && !req.file)
-      throw Object.assign(new Error("Hãy nhập chủ đề hoặc tải lên một PDF."), {
-        status: 400,
-        code: "GENERATOR_SOURCE_REQUIRED",
-      });
+    if (!input.subject && !input.sourceText && !req.file)
+      throw Object.assign(
+        new Error("Hãy nhập chủ đề, nội dung tham khảo hoặc tải lên một PDF."),
+        {
+          status: 400,
+          code: "GENERATOR_SOURCE_REQUIRED",
+        },
+      );
 
+<<<<<<< HEAD
     let sourceText = "";
     const extension = path.extname(req.file?.originalname || "").toLowerCase();
     const isCsv = extension === ".csv";
     if (req.file && !isCsv) {
+=======
+    let sourceText = input.sourceText;
+    if (req.file) {
+>>>>>>> 979bc34374fff67edfb6d55e9f9dbd30bf107e64
       const parser = new PDFParse({ data: req.file.buffer });
       try {
         sourceText = (await parser.getText()).text;
@@ -1213,6 +1603,8 @@ app.post(
           ...question,
           id: nanoid(12),
           quizId: quiz.id,
+          timeLimitSec: input.timeLimitSec,
+          basePoints: input.basePoints,
         });
     } catch (error) {
       await deleteQuiz(quiz.id);

@@ -253,7 +253,7 @@ const packs: Pack[] = [
 
 async function seedLibrary() {
   await connectRedis();
-  const owner = await getUserByEmail("danhtn@rankrush.local");
+  const owner = await getUserByEmail("admin@rankrush.local");
   if (!owner)
     throw new Error("Hãy chạy seed chính để tạo tài khoản demo trước.");
   const existingTitles = new Set(
