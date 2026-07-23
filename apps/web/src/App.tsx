@@ -135,6 +135,26 @@ const categories = [
     branches: ["Gaming"],
   },
   {
+    name: "Music",
+    icon: Music2,
+    color: "#e84393",
+    branches: [
+      "K-POP",
+      "V-POP",
+      "US-UK Pop",
+      "Latin Pop",
+      "J-POP",
+      "C-POP",
+      "Hip-Hop & Rap",
+      "EDM",
+      "R&B & Soul",
+      "Bolero",
+      "Rock",
+      "Indie & Alternative",
+      "Free Fire Soundtrack",
+    ],
+  },
+  {
     name: "Education",
     icon: GraduationCap,
     color: "#00b894",
@@ -154,6 +174,7 @@ const vietnameseContentLabels: Record<string, string> = {
   Technology: "Công nghệ",
   Sports: "Thể thao",
   Entertainment: "Giải trí",
+  Music: "Âm nhạc",
   Education: "Giáo dục",
   Business: "Kinh doanh",
   Books: "Sách",
@@ -166,6 +187,19 @@ const vietnameseContentLabels: Record<string, string> = {
   Databases: "Cơ sở dữ liệu",
   Football: "Bóng đá",
   Gaming: "Trò chơi",
+  "K-POP": "K-POP",
+  "V-POP": "V-POP",
+  "US-UK Pop": "Nhạc Âu Mỹ",
+  "Latin Pop": "Nhạc Latin",
+  "J-POP": "J-POP",
+  "C-POP": "C-POP",
+  "Hip-Hop & Rap": "Hip-Hop & Rap",
+  EDM: "Nhạc điện tử (EDM)",
+  "R&B & Soul": "R&B & Soul",
+  Bolero: "Bolero",
+  Rock: "Rock",
+  "Indie & Alternative": "Indie & Alternative",
+  "Free Fire Soundtrack": "Nhạc nền Free Fire",
   "Digital Safety": "An toàn số",
 };
 
@@ -3014,11 +3048,40 @@ function AiCreatePage() {
                 </label>
               </div>
               <ErrorBox error={error} />
+              {busy && (
+                <div className="generation-progress-bar-container">
+                  <div className="generation-progress-bar-header">
+                    <span className="generation-progress-bar-label">
+                      {source === "CSV"
+                        ? tr("Đang kiểm tra và nhập CSV...", "Validating CSV...")
+                        : tr(
+                            "AI đang phân tích và tạo câu hỏi...",
+                            "AI is analyzing and generating questions...",
+                          )}
+                    </span>
+                    <span className="generation-progress-bar-percent">
+                      {Math.round(progress)}%
+                    </span>
+                  </div>
+                  <div className="generation-progress-bar-track">
+                    <div
+                      className="generation-progress-bar-fill"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                  <small className="generation-progress-bar-hint">
+                    {progress < 30
+                      ? tr("Đang khởi tạo...", "Initializing...")
+                      : progress < 60
+                        ? tr("Đang tạo câu hỏi...", "Generating questions...")
+                        : progress < 90
+                          ? tr("Đang kiểm tra đáp án...", "Verifying answers...")
+                          : tr("Sắp hoàn thành...", "Almost done...")}
+                  </small>
+                </div>
+              )}
               <button
-                className={cx(
-                  "button button-primary button-lg button-block",
-                  busy && "generation-progress-button",
-                )}
+                className="button button-primary button-lg button-block"
                 disabled={
                   busy ||
                   !hasAllDetails ||
@@ -3026,14 +3089,16 @@ function AiCreatePage() {
                 }
                 aria-busy={busy}
               >
-                <WandSparkles />
+                {busy ? (
+                  <LoaderCircle className="spin-icon" />
+                ) : (
+                  <WandSparkles />
+                )}
                 {busy
-                  ? source === "CSV"
-                    ? tr("Đang kiểm tra và nhập CSV...", "Validating CSV...")
-                    : tr(
-                        "AI đang phân tích và tạo câu hỏi...",
-                        "AI is analyzing and generating questions...",
-                      )
+                  ? tr(
+                      `Đang tạo... ${Math.round(progress)}%`,
+                      `Generating... ${Math.round(progress)}%`,
+                    )
                   : source === "CSV"
                     ? tr("Nhập quiz từ CSV", "Import quiz from CSV")
                     : tr("Tạo quiz tự động", "Generate quiz")}

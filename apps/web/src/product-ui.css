@@ -1181,6 +1181,99 @@ footer {
   justify-self: start;
 }
 
+/* Generation progress bar */
+.generation-progress-bar-container {
+  background: linear-gradient(135deg, rgba(43, 159, 189, 0.08), rgba(91, 91, 214, 0.08));
+  border: 1px solid rgba(43, 159, 189, 0.2);
+  border-radius: 12px;
+  padding: 16px 18px;
+  display: grid;
+  gap: 10px;
+}
+.generation-progress-bar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.generation-progress-bar-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.generation-progress-bar-percent {
+  font-size: 14px;
+  font-weight: 700;
+  color: #2b9fbd;
+  font-variant-numeric: tabular-nums;
+}
+.generation-progress-bar-track {
+  background: rgba(43, 159, 189, 0.12);
+  border-radius: 8px;
+  height: 10px;
+  overflow: hidden;
+  position: relative;
+}
+.generation-progress-bar-fill {
+  background: linear-gradient(90deg, #2b9fbd, #5b5bd6, #7868f4);
+  background-size: 200% 100%;
+  border-radius: 8px;
+  height: 100%;
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: progress-shimmer 2s ease-in-out infinite;
+  position: relative;
+}
+.generation-progress-bar-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.3) 50%,
+    transparent 100%
+  );
+  animation: progress-shine 1.8s ease-in-out infinite;
+}
+.generation-progress-bar-hint {
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+  animation: progress-fade-pulse 2s ease-in-out infinite;
+}
+@keyframes progress-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+@keyframes progress-shine {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+@keyframes progress-fade-pulse {
+  0%, 100% { opacity: 0.65; }
+  50% { opacity: 1; }
+}
+
+/* Spinning loader icon for busy button */
+.spin-icon {
+  animation: spin-anim 1s linear infinite;
+}
+@keyframes spin-anim {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Dark mode progress bar */
+html[data-theme="dark"] .generation-progress-bar-container {
+  background: linear-gradient(135deg, rgba(43, 159, 189, 0.12), rgba(91, 91, 214, 0.12));
+  border-color: rgba(43, 159, 189, 0.25);
+}
+html[data-theme="dark"] .generation-progress-bar-track {
+  background: rgba(43, 159, 189, 0.18);
+}
+html[data-theme="dark"] .generation-progress-bar-percent {
+  color: #5bc8e0;
+}
+
 /* Registration, email verification and account recovery */
 .auth-page {
   align-items: stretch;
