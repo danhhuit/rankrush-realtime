@@ -407,7 +407,6 @@ function ConfirmationProvider({ children }: { children: ReactNode }) {
                   {dialog.title || tr("Xác nhận thao tác", "Confirm action")}
                 </h2>
               </div>
-            </div>
             <p id="confirm-message">{dialog.message}</p>
             <div className="confirm-dialog-actions">
               <button
@@ -418,6 +417,7 @@ function ConfirmationProvider({ children }: { children: ReactNode }) {
               >
                 {tr("Không", "No")}
               </button>
+              </div>
               <button
                 type="button"
                 className={cx(
@@ -493,6 +493,43 @@ function Logo() {
     </Link>
   );
 }
+function PasswordField({ value, onChange, placeholder, minLength, required, label, compact }: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  minLength?: number;
+  required?: boolean;
+  label: string;
+  compact?: boolean;
+}) {
+  const [visible, setVisible] = useState(false);
+  const { tr } = usePreferences();
+  return (
+    <label className={compact ? "compact-password" : ""}>
+      {label}
+      <div className="password-wrap">
+        <input
+          type={visible ? "text" : "password"}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          minLength={minLength}
+          required={required}
+        />
+        <button
+          type="button"
+          className="password-toggle"
+          tabIndex={-1}
+          onClick={() => setVisible(!visible)}
+          aria-label={visible ? tr("?n m?t kh?u","Hide password") : tr("Hi?n m?t kh?u","Show password")}
+        >
+          {visible ? <EyeOff size={18} /> : <Eye size={18} />}
+        </button>
+      </div>
+    </label>
+  );
+}
+
 function PreferenceControls({ compact = false }: { compact?: boolean }) {
   const { locale, setLocale, theme, toggleTheme, t } = usePreferences();
   return (
@@ -524,18 +561,35 @@ function PreferenceControls({ compact = false }: { compact?: boolean }) {
 function Header() {
   const nav = useNavigate();
   const { t, tr } = usePreferences();
+  const [showToast, setShowToast] = useState<string | null>(null);
+  useEffect(() => {
+    if (!showToast) return;
+    const timer = setTimeout(() => setShowToast(null), 2500);
+    return () => clearTimeout(timer);
+  }, [showToast]);
+  const showToastMsg = useCallback((msg: string) => setShowToast(msg), []);
+  useEffect(() => {
+    (window as any).__headerToast = showToastMsg;
+    return () => { delete (window as any).__headerToast; };
+  }, [showToastMsg]);
   const token = hostToken();
   const [open, setOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [pin, setPin] = useState("");
+  const [userVersion, setUserVersion] = useState(0);
   const user = useMemo(() => {
     try {
       return JSON.parse(localStorage.getItem("rr_user") || "{}");
     } catch {
       return {};
     }
-  }, [token]);
+  }, [token, userVersion]);
+  useEffect(() => {
+    const handler = () => setUserVersion((v) => v + 1);
+    window.addEventListener("rr-user-updated", handler);
+    return () => window.removeEventListener("rr-user-updated", handler);
+  }, []);
   useEffect(() => {
     const keyboard = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
@@ -614,10 +668,19 @@ function Header() {
                       <Settings2 size={15} /> {tr("Hồ sơ", "Profile")}
                     </Link>
                     <button
+                      id="header-logout-btn"
                       onClick={() => {
-                        localStorage.removeItem("rr_host_token");
-                        localStorage.removeItem("rr_user");
-                        nav("/");
+                        const bd = document.createElement('div');
+                        bd.className = 'confirm-backdrop';
+                        bd.innerHTML = '<section class="confirm-dialog" role="alertdialog" aria-modal="true"><div class="confirm-dialog-heading"><span class="confirm-dialog-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></span><div><span class="eyebrow">' + tr("X\u00e1c nh\u1eadn","Confirmation") + '</span><h2>' + tr("\u0110\u0103ng xu\u1ea5t?","Log out?") + '</h2></div></div><p>' + tr("B\u1ea1n c\u00f3 ch\u1eafc mu\u1ed1n \u0111\u0103ng xu\u1ea5t?","Are you sure you want to log out?") + '</p><div class="confirm-dialog-actions"><button class="button button-secondary" id="hdr-logout-no">' + tr("Kh\u00f4ng","No") + '</button><button class="button button-danger" id="hdr-logout-yes">' + tr("C\u00f3","Yes") + '</button></div></section>';
+                        document.body.appendChild(bd);
+                        document.getElementById("hdr-logout-no")!.addEventListener("click", () => bd.remove());
+                        document.getElementById("hdr-logout-yes")!.addEventListener("click", () => {
+                          bd.remove();
+                          localStorage.removeItem("rr_host_token");
+                          localStorage.removeItem("rr_user");
+                          nav("/");
+                        });
                       }}
                     >
                       <LogOut size={15} /> {t("logout")}
@@ -635,6 +698,13 @@ function Header() {
         </nav>
       </header>
       {searchOpen && <SearchDialog onClose={() => setSearchOpen(false)} />}
+      {showToast && (
+        <div style={{position:"fixed",bottom:"30px",left:"50%",transform:"translateX(-50%)",zIndex:9999,background:"var(--panel-bg)",border:"1px solid var(--line)",borderRadius:"12px",padding:"12px 20px",display:"flex",alignItems:"center",gap:"10px",color:"var(--ink)",boxShadow:"0 8px 32px rgba(0,0,0,0.14)"}}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <span>{showToast}</span>
+        </div>
+      )}
+      <div id="header-toast-portal"></div>
     </>
   );
 }
@@ -1343,7 +1413,8 @@ function Auth({ mode }: { mode: "login" | "register" }) {
         nav(`/host/${room.id}`);
         return;
       }
-      nav(data.user.role === "ADMIN" ? "/admin" : "/dashboard");
+      (window as any).__headerToast?.(tr("Đăng nhập thành công!", "Login successful!"));
+                      nav(data.user.role === "ADMIN" ? "/admin" : "/");
     } catch (e) {
       setError(
         e instanceof Error
@@ -1482,32 +1553,62 @@ function Auth({ mode }: { mode: "login" | "register" }) {
             )}
             <label>
               {tr("Mật khẩu", "Password")}
-              <input
-                type="password"
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                placeholder={tr("Tối thiểu 8 ký tự", "At least 8 characters")}
-                required
-                minLength={8}
-              />
+              <div className="password-wrap">
+                <input
+                  type="password"
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  placeholder={tr("Tối thiểu 8 ký tự", "At least 8 characters")}
+                  required
+                  minLength={8}
+                  id="pw-login"
+                />
+                <button
+                  type="button"
+                  className="password-toggle"
+                  tabIndex={-1}
+                  onClick={() => {
+                    const inp = document.getElementById("pw-login") as HTMLInputElement;
+                    if (inp) inp.type = inp.type === "password" ? "text" : "password";
+                  }}
+                  aria-label={tr("Hiện/ẩn mật khẩu","Toggle password visibility")}
+                >
+                  <Eye size={18} />
+                </button>
+              </div>
             </label>
             {mode === "register" && (
               <>
                 <label>
                   {tr("Xác nhận mật khẩu", "Confirm password")}
-                  <input
-                    type="password"
-                    value={form.confirmPassword}
-                    onChange={(e) =>
-                      setForm({ ...form, confirmPassword: e.target.value })
-                    }
-                    placeholder={tr(
-                      "Nhập lại mật khẩu",
-                      "Enter password again",
-                    )}
-                    required
-                    minLength={8}
-                  />
+                  <div className="password-wrap">
+                    <input
+                      type="password"
+                      value={form.confirmPassword}
+                      onChange={(e) =>
+                        setForm({ ...form, confirmPassword: e.target.value })
+                      }
+                      placeholder={tr(
+                        "Nhập lại mật khẩu",
+                        "Enter password again",
+                      )}
+                      required
+                      minLength={8}
+                      id="pw-reg-cf"
+                    />
+                    <button
+                      type="button"
+                      className="password-toggle"
+                      tabIndex={-1}
+                      onClick={() => {
+                        const inp = document.getElementById("pw-reg-cf") as HTMLInputElement;
+                        if (inp) inp.type = inp.type === "password" ? "text" : "password";
+                      }}
+                      aria-label={tr("Hiện/ẩn mật khẩu","Toggle password visibility")}
+                    >
+                      <Eye size={18} />
+                    </button>
+                  </div>
                 </label>
                 <div className="verification-row">
                   <label>
@@ -1743,35 +1844,65 @@ function ForgotPassword() {
                   </button>
                   <label>
                     {tr("Mật khẩu mới", "New password")}
-                    <input
-                      type="password"
-                      minLength={8}
-                      required
-                      value={form.password}
-                      onChange={(e) =>
-                        setForm({ ...form, password: e.target.value })
-                      }
-                      placeholder={tr(
-                        "Tối thiểu 8 ký tự",
-                        "At least 8 characters",
-                      )}
-                    />
+                    <div className="password-wrap">
+                      <input
+                        type="password"
+                        minLength={8}
+                        required
+                        value={form.password}
+                        onChange={(e) =>
+                          setForm({ ...form, password: e.target.value })
+                        }
+                        placeholder={tr(
+                          "Tối thiểu 8 ký tự",
+                          "At least 8 characters",
+                        )}
+                        id="pw-forgot"
+                      />
+                      <button
+                        type="button"
+                        className="password-toggle"
+                        tabIndex={-1}
+                        onClick={() => {
+                          const inp = document.getElementById("pw-forgot") as HTMLInputElement;
+                          if (inp) inp.type = inp.type === "password" ? "text" : "password";
+                        }}
+                        aria-label={tr("Hiện/ẩn mật khẩu","Toggle password visibility")}
+                      >
+                        <Eye size={18} />
+                      </button>
+                    </div>
                   </label>
                   <label>
                     {tr("Xác nhận mật khẩu mới", "Confirm new password")}
-                    <input
-                      type="password"
-                      minLength={8}
-                      required
-                      value={form.confirmPassword}
-                      onChange={(e) =>
-                        setForm({ ...form, confirmPassword: e.target.value })
-                      }
-                      placeholder={tr(
-                        "Nhập lại mật khẩu mới",
-                        "Enter the new password again",
-                      )}
-                    />
+                    <div className="password-wrap">
+                      <input
+                        type="password"
+                        minLength={8}
+                        required
+                        value={form.confirmPassword}
+                        onChange={(e) =>
+                          setForm({ ...form, confirmPassword: e.target.value })
+                        }
+                        placeholder={tr(
+                          "Nhập lại mật khẩu mới",
+                          "Enter the new password again",
+                        )}
+                        id="pw-forgot-cf"
+                      />
+                      <button
+                        type="button"
+                        className="password-toggle"
+                        tabIndex={-1}
+                        onClick={() => {
+                          const inp = document.getElementById("pw-forgot-cf") as HTMLInputElement;
+                          if (inp) inp.type = inp.type === "password" ? "text" : "password";
+                        }}
+                        aria-label={tr("Hiện/ẩn mật khẩu","Toggle password visibility")}
+                      >
+                        <Eye size={18} />
+                      </button>
+                    </div>
                   </label>
                 </>
               )}
@@ -2487,6 +2618,7 @@ function SettingsPage() {
     confirmPassword: "",
     logoutOther: false,
   });
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   useEffect(() => {
     void request<{ displayName: string; username?: string; email: string }>(
@@ -2502,6 +2634,7 @@ function SettingsPage() {
           currentPassword: "",
           password: "",
           confirmPassword: "",
+          logoutOther: false,
         }),
       )
       .catch((error) => toast.show((error as Error).message));
@@ -2532,6 +2665,7 @@ function SettingsPage() {
         }),
       });
       localStorage.setItem("rr_user", JSON.stringify(user));
+      window.dispatchEvent(new Event("rr-user-updated"));
       
       if (form.password) {
         toast.show(
@@ -2543,13 +2677,14 @@ function SettingsPage() {
         toast.show(tr("Đã lưu cài đặt tài khoản.", "Account settings saved."));
       }
 
-      setForm({
-        ...form,
+      setForm((prev) => ({
+        ...prev,
         ...user,
         currentPassword: "",
         password: "",
         confirmPassword: "",
-      });
+        logoutOther: false,
+      }));
       toast.show(tr("Đã lưu cài đặt tài khoản.", "Account settings saved."));
     } catch (error) {
       toast.show((error as Error).message);
@@ -2602,10 +2737,39 @@ function SettingsPage() {
               disabled
             />
           </label>
-          <label>
-            Email
-            <input value={form.email} disabled />
-          </label>
+          <div className="settings-avatar-section">
+            <label className="avatar-upload-label">
+              <span className="eyebrow">{tr("\u1ea2nh \u0111\u1ea1i di\u1ec7n","Avatar")}</span>
+              <div className="avatar-upload-area">
+                <img src={avatarPreview || "/brand/rankrush-r2.png"} alt="Avatar" className="avatar-preview" />
+                <input type="file" accept="image/*" onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => setAvatarPreview(ev.target?.result as string);
+                    window.dispatchEvent(new Event("rr-user-updated"));
+                    reader.readAsDataURL(file);
+                  }
+                }} />
+                <span>{tr("T\u1ea3i \u1ea3nh l\u00ean","Upload photo")}</span>
+              </div>
+            </label>
+            <div className="avatar-presets">
+              <span className="eyebrow">{tr("Ho\u1eb7c ch\u1ecdn m\u1eabu","Or pick a preset")}</span>
+              <div className="preset-icons">
+                {["\ud83e\udd8b","\ud83e\udd8d","\ud83e\udd81","\ud83e\udd87","\ud83d\udc3a","\ud83e\udd86","\ud83e\udd8a","\ud83d\udc39","\ud83d\udc31","\ud83d\udc2f","\ud83d\udc18","\ud83d\udc37"].map((icon) => (
+                  <button
+                    key={icon}
+                    type="button"
+                    className={cx("preset-icon-btn", avatarPreview === icon && "active")}
+                    onClick={() => setAvatarPreview(icon)}
+                  >
+                    {icon}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
           <label>
             {tr("Mật khẩu hiện tại", "Current password")}{" "}
             <small>
@@ -2614,14 +2778,29 @@ function SettingsPage() {
                 "Required only when changing password",
               )}
             </small>
-            <input
-              type="password"
-              value={form.currentPassword}
-              onChange={(event) =>
+              <div className="password-wrap">
+                <input
+                type="password"
+                value={form.currentPassword}
+                onChange={(event) =>
                 setForm({ ...form, currentPassword: event.target.value })
-              }
-              required={Boolean(form.password)}
-            />
+                }
+                required={Boolean(form.password)}
+                id="pw-setting-current"
+                />
+                <button
+                type="button"
+                className="password-toggle"
+                tabIndex={-1}
+                onClick={() => {
+                const inp = document.getElementById("pw-setting-current") as HTMLInputElement;
+                if (inp) inp.type = inp.type === "password" ? "text" : "password";
+                }}
+                aria-label={tr("Hi\u1ec7n/\u1ea9n m\u1eadt kh\u1ea9u","Toggle password visibility")}
+                >
+                <Eye size={18} />
+                </button>
+              </div>
           </label>
           <label>
             {tr("Mật khẩu mới", "New password")}{" "}
@@ -2631,24 +2810,54 @@ function SettingsPage() {
                 "Leave blank to keep the current password",
               )}
             </small>
-            <input
-              type="password"
-              minLength={8}
-              value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
-            />
+              <div className="password-wrap">
+                <input
+                type="password"
+                minLength={8}
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                id="pw-setting-new"
+                />
+                <button
+                type="button"
+                className="password-toggle"
+                tabIndex={-1}
+                onClick={() => {
+                const inp = document.getElementById("pw-setting-new") as HTMLInputElement;
+                if (inp) inp.type = inp.type === "password" ? "text" : "password";
+                }}
+                aria-label={tr("Hi\u1ec7n/\u1ea9n m\u1eadt kh\u1ea9u","Toggle password visibility")}
+                >
+                <Eye size={18} />
+                </button>
+              </div>
           </label>
           <label>
             {tr("Xác nhận mật khẩu mới", "Confirm new password")}
-            <input
-              type="password"
-              minLength={8}
-              value={form.confirmPassword}
-              onChange={(event) =>
-                setForm({ ...form, confirmPassword: event.target.value })
-              }
-              required={Boolean(form.password)}
-            />
+            <div className="password-wrap">
+              <input
+                type="password"
+                minLength={8}
+                value={form.confirmPassword}
+                onChange={(event) =>
+                  setForm({ ...form, confirmPassword: event.target.value })
+                }
+                required={Boolean(form.password)}
+                id="pw-setting-confirm"
+              />
+              <button
+                type="button"
+                className="password-toggle"
+                tabIndex={-1}
+                onClick={() => {
+                  const inp = document.getElementById("pw-setting-confirm") as HTMLInputElement;
+                  if (inp) inp.type = inp.type === "password" ? "text" : "password";
+                }}
+                aria-label={tr("Hiện/ẩn mật khẩu","Toggle password visibility")}
+              >
+                <Eye size={18} />
+              </button>
+            </div>
           </label>
           {Boolean(form.password) && (
             <label className="checkbox-label">
@@ -2810,7 +3019,7 @@ function AiCreatePage() {
   return (
     <DashboardWorkspace active="ai">
       <div className="ai-create-page">
-        <button className="text-button back" onClick={() => nav("/dashboard")}>
+        <button className="text-button back" onClick={() => nav("/")}>
           <ArrowLeft />
           Dashboard
         </button>
@@ -3167,6 +3376,7 @@ function Editor() {
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [selected, setSelected] = useState<number>(0);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState("");
   useEffect(() => {
@@ -3310,7 +3520,7 @@ function Editor() {
   return (
     <div className="editor-page">
       <header className="editor-header">
-        <button className="icon-button" onClick={() => nav("/dashboard")}>
+        <button className="icon-button" onClick={() => nav("/")}>
           <ArrowLeft />
         </button>
         <div>
@@ -5106,7 +5316,7 @@ function HostGame() {
           <PreferenceControls compact />
           <button
             className="button button-ghost"
-            onClick={() => nav("/dashboard")}
+            onClick={() => nav("/")}
           >
             <X />
             {tr("Thoát", "Exit")}
@@ -5128,7 +5338,7 @@ function HostGame() {
           <h1>{tr("Phòng đã được hủy", "Lobby cancelled")}</h1>
           <button
             className="button button-secondary"
-            onClick={() => nav("/dashboard")}
+            onClick={() => nav("/")}
           >
             {tr("Về dashboard", "Back to dashboard")}
           </button>
@@ -5138,7 +5348,7 @@ function HostGame() {
           snapshot={snapshot}
           onReport={() => nav(`/report/${id}`)}
           onReplay={replay}
-          onExit={() => nav("/dashboard")}
+          onExit={() => nav("/")}
         />
       ) : (
         <div className="host-game-layout">
@@ -5832,7 +6042,7 @@ function Report() {
   return (
     <Page>
       <div className="report-page">
-        <button className="text-button back" onClick={() => nav("/dashboard")}>
+        <button className="text-button back" onClick={() => nav("/")}>
           <ArrowLeft />
           Dashboard
         </button>

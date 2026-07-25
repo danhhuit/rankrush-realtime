@@ -2971,3 +2971,157 @@ html[data-theme="dark"] .countdown::before {
   font-size: 14px;
   color: var(--muted);
 }
+
+
+/* Password visibility toggle */
+.password-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0px;
+  position: relative;
+  height: auto;
+  min-height: 0;
+}
+.password-wrap input {
+  flex: 1;
+  padding-right: 42px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.password-toggle {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  display: grid;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  place-items: center;
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 42px;
+  flex-shrink: 0;
+  margin-left: 0;
+  z-index: 1;
+  border-radius: 10px;
+}
+.password-toggle:hover {
+  color: var(--purple);
+  background: rgba(0,0,0,0.04);
+}
+html[data-theme="dark"] .password-toggle:hover {
+  background: rgba(255,255,255,0.06);
+}
+.password-wrap-label > .password-wrap {
+  margin-top: 6px;
+}
+.compact-password {
+  display: grid;
+  gap: 6px;
+}
+
+/* Settings avatar section */
+.settings-avatar-section {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+}
+.avatar-upload-label {
+  display: grid;
+  gap: 8px;
+}
+.avatar-upload-area {
+  align-items: center;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: center;
+  min-height: 120px;
+  padding: 16px;
+  text-align: center;
+}
+.avatar-upload-area:hover {
+  background: var(--purple-soft);
+  border-color: var(--purple);
+}
+.avatar-upload-area input {
+  display: none;
+}
+.avatar-preview {
+  border-radius: 50%;
+  height: 72px;
+  object-fit: cover;
+  width: 72px;
+  background: var(--surface);
+}
+.avatar-presets {
+  display: grid;
+  gap: 8px;
+}
+.avatar-presets .preset-icons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.preset-icon-btn {
+  background: var(--surface);
+  border: 2px solid transparent;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 28px;
+  height: 52px;
+  padding: 0;
+  width: 52px;
+  display: grid;
+  place-items: center;
+  transition: border-color 0.15s, background-color 0.15s, transform 0.12s;
+}
+.preset-icon-btn:hover {
+  border-color: var(--purple);
+  background: var(--purple-soft);
+  transform: scale(1.08);
+}
+.preset-icon-btn.active {
+  border-color: var(--purple);
+  background: var(--purple-soft);
+  box-shadow: 0 0 0 3px rgba(43, 159, 189, 0.22);
+}
+
+/* Admin responsive */
+@media (max-width: 768px) {
+  .admin-sidebar {
+    width: 56px;
+    overflow: hidden;
+  }
+  .admin-sidebar nav a span,
+  .admin-sidebar nav small,
+  .admin-sidebar-user div,
+  .admin-brand b {
+    display: none;
+  }
+  .admin-main {
+    margin-left: 56px;
+  }
+  .admin-topbar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+}
+@media (max-width: 480px) {
+  .admin-sidebar {
+    display: none;
+  }
+  .admin-main {
+    margin-left: 0;
+  }
+}

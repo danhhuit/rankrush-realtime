@@ -1,4 +1,4 @@
-.admin-shell {
+﻿.admin-shell {
   --admin-bg: #f3f6fb;
   --admin-surface: #ffffff;
   --admin-surface-soft: #f7f8fc;
@@ -1328,6 +1328,8 @@ html[data-theme="dark"] .admin-error {
   background: transparent;
   border: none;
   padding: 5px;
+  top: 50%;
+  transform: translateY(-50%);
   color: var(--admin-muted);
   cursor: pointer;
   display: grid;
@@ -1356,3 +1358,4 @@ html[data-theme="dark"] .admin-error {
   width: 16px;
   height: 16px;
 }
+

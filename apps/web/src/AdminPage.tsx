@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Activity,
   Ban,
@@ -28,7 +28,7 @@ import {
   EyeOff,
   UserPlus,
 } from "lucide-react";
-import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate, useBlocker } from "react-router-dom";
 import { hostToken, request } from "./api";
 import { usePreferences } from "./preferences";
 
@@ -456,12 +456,12 @@ function AdminConfirm({
 }
 
 function AdminAppearance() {
-  const { locale, setLocale, theme, themePreference, setThemePreference, t } =
+  const { locale, setLocale, theme, toggleTheme, t } =
     usePreferences();
   return (
-    <div className="admin-appearance">
-      <label title={t("language")}>
-        <Globe2 />
+    <div className="preference-controls compact" style={{ border: 0, padding: 0 }}>
+      <label className="language-control" title={t("language")}>
+        <span className="language-flag">{locale === "vi" ? "\ud83c\uddfb\ud83c\uddf3" : "\ud83c\uddec\ud83c\udde7"}</span>
         <select
           value={locale}
           onChange={(event) => setLocale(event.target.value as "vi" | "en")}
@@ -471,28 +471,15 @@ function AdminAppearance() {
           <option value="en">EN</option>
         </select>
       </label>
-      <label title={t("appearance")}>
-        {themePreference === "system" ? (
-          <Monitor />
-        ) : theme === "dark" ? (
-          <Moon />
-        ) : (
-          <Sun />
-        )}
-        <select
-          value={themePreference}
-          onChange={(event) =>
-            setThemePreference(
-              event.target.value as "system" | "light" | "dark",
-            )
-          }
-          aria-label={t("appearance")}
-        >
-          <option value="system">{t("systemTheme")}</option>
-          <option value="light">{t("lightTheme")}</option>
-          <option value="dark">{t("darkTheme")}</option>
-        </select>
-      </label>
+      <button
+        type="button"
+        className="theme-control-button"
+        title={t("appearance")}
+        onClick={toggleTheme}
+        aria-label={t("appearance")}
+      >
+        {theme === "dark" ? <Moon /> : <Sun />}
+      </button>
     </div>
   );
 }
@@ -511,8 +498,9 @@ function AdminBrand() {
 }
 
 function AdminSidebar({ active, user }: { active: string; user: StoredUser }) {
-  const { tr } = usePreferences();
+  const { tr, t } = usePreferences();
   const navigate = useNavigate();
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const item = (
     key: string,
     to: string,
@@ -571,15 +559,34 @@ function AdminSidebar({ active, user }: { active: string; user: StoredUser }) {
         </div>
         <button
           title={tr("Đăng xuất", "Log out")}
-          onClick={() => {
-            localStorage.removeItem("rr_host_token");
-            localStorage.removeItem("rr_user");
-            navigate("/login");
-          }}
+          onClick={() => setShowLogoutConfirm(true)}
         >
           <LogOut />
         </button>
       </div>
+      {showLogoutConfirm && (
+        <div className="confirm-backdrop" style={{position:"fixed",zIndex:9999}} onClick={() => setShowLogoutConfirm(false)}>
+          <section className="confirm-dialog" role="alertdialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <div className="confirm-dialog-heading">
+              <span className="confirm-dialog-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></span>
+              <div>
+                <span className="eyebrow">{tr("X\u00e1c nh\u1eadn","Confirmation")}</span>
+                <h2>{tr("Đăng xuất?", "Log out?")}</h2>
+              </div>
+            </div>
+            <p>{tr("Bạn có chắc muốn đăng xuất khỏi tài khoản quản trị?", "Are you sure you want to log out of the admin account?")}</p>
+            <div className="confirm-dialog-actions">
+              <button className="button button-secondary" onClick={() => setShowLogoutConfirm(false)}>{tr("Kh\u00f4ng","No")}</button>
+              <button className="button button-danger" onClick={() => {
+                setShowLogoutConfirm(false);
+                localStorage.removeItem("rr_host_token");
+                localStorage.removeItem("rr_user");
+                navigate("/login");
+              }}>{tr("C\u00f3","Yes")}</button>
+            </div>
+          </section>
+        </div>
+      )}
     </aside>
   );
 }
@@ -1642,7 +1649,29 @@ export default function AdminPage() {
             <AdminAppearance />
             <button
               className="admin-button secondary"
-              onClick={() => setRefresh((value) => value + 1)}
+              onClick={() => {
+                if ((window as any).__refreshing) return;
+                (window as any).__refreshing = true;
+                const bd = document.createElement('div');
+                bd.className = 'confirm-backdrop';
+                bd.style.cssText = 'position:fixed;z-index:9999';
+                bd.innerHTML = '<section class="confirm-dialog" role="alertdialog" aria-modal="true"><div class="confirm-dialog-heading"><span class="confirm-dialog-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></span><div><span class="eyebrow">' + tr("Xác nhận","Confirmation") + '</span><h2>' + tr("Làm mới dữ liệu?","Refresh data?") + '</h2></div></div><p>' + tr("Thao tác này sẽ tải lại toàn bộ dữ liệu quản trị.","This will reload all admin data.") + '</p><div class="confirm-dialog-actions"><button class="button button-secondary" id="rfc-no">' + tr("Kh\u00f4ng","No") + '</button><button class="button button-primary" id="rfc-yes">' + tr("C\u00f3","Yes") + '</button></div></section>';
+                document.body.appendChild(bd);
+                const clean = () => { bd.remove(); (window as any).__refreshing = false; };
+                bd.querySelector('#rfc-no')?.addEventListener('click', clean);
+                bd.querySelector('#rfc-yes')?.addEventListener('click', () => {
+                  clean();
+                  setRefresh((v) => v + 1);
+                  setTimeout(() => {
+                    const toast = document.createElement('div');
+                    toast.className = 'toast visible';
+                    toast.style.cssText = 'position:fixed;bottom:30px;left:50%;transform:translateX(-50%);z-index:9999';
+                    toast.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> ' + tr("Đã làm mới dữ liệu.","Data refreshed.");
+                    document.body.appendChild(toast);
+                    setTimeout(() => { toast.remove(); }, 2500);
+                  }, 300);
+                });
+              }}
             >
               <RefreshCw />
               {tr("Làm mới", "Refresh")}

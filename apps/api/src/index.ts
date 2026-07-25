@@ -1,4 +1,4 @@
-import http from "node:http";
+﻿import http from "node:http";
 import { createHash, randomInt } from "node:crypto";
 import { existsSync } from "node:fs";
 import { networkInterfaces } from "node:os";
@@ -13,7 +13,7 @@ import express, {
 } from "express";
 import helmet from "helmet";
 import multer from "multer";
-import { nanoid } from "nanoid";
+import { customAlphabet, nanoid } from "nanoid";
 import { PDFParse } from "pdf-parse";
 import { Server } from "socket.io";
 import { z } from "zod";
@@ -115,7 +115,7 @@ const allowWebOrigin = (
   if (!origin || isAllowedWebOrigin(origin)) callback(null, true);
   else
     callback(
-      Object.assign(new Error("Origin không được phép truy cập RankRush."), {
+      Object.assign(new Error("Origin khÃ´ng Ä‘Æ°á»£c phÃ©p truy cáº­p RankRush."), {
         status: 403,
         code: "CORS_ORIGIN_DENIED",
       }),
@@ -141,7 +141,7 @@ const quizSourceUpload = multer({
       extension === ".csv";
     if (!supported) {
       callback(
-        Object.assign(new Error("Chỉ hỗ trợ tệp PDF hoặc CSV."), {
+        Object.assign(new Error("Chá»‰ há»— trá»£ tá»‡p PDF hoáº·c CSV."), {
           status: 400,
           code: "SOURCE_FILE_UNSUPPORTED",
         }),
@@ -159,7 +159,7 @@ const asyncRoute =
   };
 const authId = (req: Request) => {
   if (req.auth?.kind !== "host")
-    throw Object.assign(new Error("Không có quyền."), {
+    throw Object.assign(new Error("KhÃ´ng cÃ³ quyá»n."), {
       status: 401,
       code: "UNAUTHORIZED",
     });
@@ -168,13 +168,13 @@ const authId = (req: Request) => {
 async function ownedQuiz(req: Request, id: string) {
   const quiz = await getQuiz(id);
   if (!quiz)
-    throw Object.assign(new Error("Không tìm thấy quiz."), {
+    throw Object.assign(new Error("KhÃ´ng tÃ¬m tháº¥y quiz."), {
       status: 404,
       code: "QUIZ_NOT_FOUND",
     });
   const isAdmin = req.auth?.kind === "host" && req.auth.role === "ADMIN";
   if (quiz.ownerId !== authId(req) && !isAdmin)
-    throw Object.assign(new Error("Bạn không sở hữu quiz này."), {
+    throw Object.assign(new Error("Báº¡n khÃ´ng sá»Ÿ há»¯u quiz nÃ y."), {
       status: 403,
       code: "FORBIDDEN",
     });
@@ -183,13 +183,13 @@ async function ownedQuiz(req: Request, id: string) {
 async function hostableQuiz(req: Request, id: string) {
   const quiz = await getQuiz(id);
   if (!quiz)
-    throw Object.assign(new Error("Không tìm thấy quiz."), {
+    throw Object.assign(new Error("KhÃ´ng tÃ¬m tháº¥y quiz."), {
       status: 404,
       code: "QUIZ_NOT_FOUND",
     });
   const isAdmin = req.auth?.kind === "host" && req.auth.role === "ADMIN";
   if (quiz.ownerId !== authId(req) && quiz.status !== "PUBLISHED" && !isAdmin)
-    throw Object.assign(new Error("Quiz này chưa được công khai để tổ chức."), {
+    throw Object.assign(new Error("Quiz nÃ y chÆ°a Ä‘Æ°á»£c cÃ´ng khai Ä‘á»ƒ tá»• chá»©c."), {
       status: 403,
       code: "FORBIDDEN",
     });
@@ -198,13 +198,13 @@ async function hostableQuiz(req: Request, id: string) {
 async function ownedSession(req: Request, id: string) {
   const s = await getSession(id);
   if (!s)
-    throw Object.assign(new Error("Không tìm thấy phiên."), {
+    throw Object.assign(new Error("KhÃ´ng tÃ¬m tháº¥y phiÃªn."), {
       status: 404,
       code: "SESSION_NOT_FOUND",
     });
   const isAdmin = req.auth?.kind === "host" && req.auth.role === "ADMIN";
   if (s.hostId !== authId(req) && !isAdmin)
-    throw Object.assign(new Error("Bạn không phải host của phiên."), {
+    throw Object.assign(new Error("Báº¡n khÃ´ng pháº£i host cá»§a phiÃªn."), {
       status: 403,
       code: "FORBIDDEN",
     });
@@ -548,7 +548,7 @@ const registerSchema = z
     verificationCode: z.string().regex(/^\d{6}$/),
   })
   .refine((data) => data.password === data.confirmPassword, {
-    message: "Mật khẩu xác nhận không khớp.",
+    message: "Máº­t kháº©u xÃ¡c nháº­n khÃ´ng khá»›p.",
     path: ["confirmPassword"],
   });
 
@@ -562,7 +562,7 @@ async function issueEmailCode(email: string, purpose: "register" | "reset") {
   const allowed = await redis.set(cooldownKey, "1", "EX", 60, "NX");
   if (!allowed)
     throw Object.assign(
-      new Error("Vui lòng chờ 60 giây trước khi gửi lại mã."),
+      new Error("Vui lÃ²ng chá» 60 giÃ¢y trÆ°á»›c khi gá»­i láº¡i mÃ£."),
       {
         status: 429,
         code: "EMAIL_CODE_RATE_LIMITED",
@@ -632,12 +632,12 @@ app.post(
       getUserByUsername(data.username),
     ]);
     if (emailUser)
-      throw Object.assign(new Error("Email đã được sử dụng."), {
+      throw Object.assign(new Error("Email Ä‘Ã£ Ä‘Æ°á»£c sá»­ dá»¥ng."), {
         status: 409,
         code: "EMAIL_EXISTS",
       });
     if (usernameUser)
-      throw Object.assign(new Error("Tên đăng nhập đã được sử dụng."), {
+      throw Object.assign(new Error("TÃªn Ä‘Äƒng nháº­p Ä‘Ã£ Ä‘Æ°á»£c sá»­ dá»¥ng."), {
         status: 409,
         code: "USERNAME_EXISTS",
       });
@@ -645,8 +645,8 @@ app.post(
     res.json({
       ...result,
       message: result.sent
-        ? "Mã xác nhận đã được gửi đến email."
-        : "SMTP chưa được cấu hình; đang dùng mã phát triển.",
+        ? "MÃ£ xÃ¡c nháº­n Ä‘Ã£ Ä‘Æ°á»£c gá»­i Ä‘áº¿n email."
+        : "SMTP chÆ°a Ä‘Æ°á»£c cáº¥u hÃ¬nh; Ä‘ang dÃ¹ng mÃ£ phÃ¡t triá»ƒn.",
     });
   }),
 );
@@ -669,7 +669,7 @@ app.post(
       if (attempts >= 5)
         await redis.del(keys.emailVerification(email), attemptsKey);
       throw Object.assign(
-        new Error("Mã xác nhận email không đúng hoặc đã hết hạn."),
+        new Error("MÃ£ xÃ¡c nháº­n email khÃ´ng Ä‘Ãºng hoáº·c Ä‘Ã£ háº¿t háº¡n."),
         { status: 400, code: "EMAIL_CODE_INVALID" },
       );
     }
@@ -711,7 +711,7 @@ app.post(
         password: z.string().min(1),
       })
       .refine((value) => value.identifier || value.email, {
-        message: "Hãy nhập email hoặc tên đăng nhập.",
+        message: "HÃ£y nháº­p email hoáº·c tÃªn Ä‘Äƒng nháº­p.",
       })
       .parse(req.body);
     const identifier = (data.identifier || data.email || "").toLowerCase();
@@ -719,7 +719,7 @@ app.post(
     const attempts = Number((await redis.get(attemptsKey)) || 0);
     if (attempts >= 10)
       throw Object.assign(
-        new Error("Quá nhiều lần đăng nhập sai. Vui lòng thử lại sau 15 phút."),
+        new Error("QuÃ¡ nhiá»u láº§n Ä‘Äƒng nháº­p sai. Vui lÃ²ng thá»­ láº¡i sau 15 phÃºt."),
         { status: 429, code: "LOGIN_RATE_LIMITED" },
       );
     const user = identifier.includes("@")
@@ -729,7 +729,7 @@ app.post(
       const failed = await redis.incr(attemptsKey);
       if (failed === 1) await redis.expire(attemptsKey, 15 * 60);
       throw Object.assign(
-        new Error("Tên đăng nhập/email hoặc mật khẩu không đúng."),
+        new Error("TÃªn Ä‘Äƒng nháº­p/email hoáº·c máº­t kháº©u khÃ´ng Ä‘Ãºng."),
         {
           status: 401,
           code: "LOGIN_FAILED",
@@ -738,7 +738,7 @@ app.post(
     }
     if (user.status === "SUSPENDED")
       throw Object.assign(
-        new Error("Tài khoản đã bị tạm khóa. Vui lòng liên hệ quản trị viên."),
+        new Error("TÃ i khoáº£n Ä‘Ã£ bá»‹ táº¡m khÃ³a. Vui lÃ²ng liÃªn há»‡ quáº£n trá»‹ viÃªn."),
         { status: 403, code: "ACCOUNT_SUSPENDED" },
       );
     await redis.del(attemptsKey);
@@ -767,7 +767,7 @@ app.post(
     }
     res.json({
       message:
-        "Nếu email tồn tại, mã đặt lại đã được tạo và có hiệu lực 15 phút.",
+        "Náº¿u email tá»“n táº¡i, mÃ£ Ä‘áº·t láº¡i Ä‘Ã£ Ä‘Æ°á»£c táº¡o vÃ  cÃ³ hiá»‡u lá»±c 15 phÃºt.",
       devCode,
     });
   }),
@@ -783,7 +783,7 @@ app.post(
         confirmPassword: z.string().min(8).max(100),
       })
       .refine((value) => value.password === value.confirmPassword, {
-        message: "Mật khẩu xác nhận không khớp.",
+        message: "Máº­t kháº©u xÃ¡c nháº­n khÃ´ng khá»›p.",
         path: ["confirmPassword"],
       })
       .parse(req.body);
@@ -800,7 +800,7 @@ app.post(
         await redis.expire(attemptsKey, config.RESET_CODE_TTL_SECONDS);
       if (attempts >= 5)
         await redis.del(keys.passwordReset(email), attemptsKey);
-      throw Object.assign(new Error("Mã đặt lại không đúng hoặc đã hết hạn."), {
+      throw Object.assign(new Error("MÃ£ Ä‘áº·t láº¡i khÃ´ng Ä‘Ãºng hoáº·c Ä‘Ã£ háº¿t háº¡n."), {
         status: 400,
         code: "RESET_CODE_INVALID",
       });
@@ -814,7 +814,7 @@ app.post(
       .del(keys.passwordReset(email))
       .del(keys.emailCodeAttempts("reset", email))
       .exec();
-    res.json({ message: "Mật khẩu đã được cập nhật." });
+    res.json({ message: "Máº­t kháº©u Ä‘Ã£ Ä‘Æ°á»£c cáº­p nháº­t." });
   }),
 );
 app.get(
@@ -823,7 +823,7 @@ app.get(
   asyncRoute(async (req, res) => {
     const user = await getUser(authId(req));
     if (!user)
-      throw Object.assign(new Error("Không tìm thấy tài khoản."), {
+      throw Object.assign(new Error("KhÃ´ng tÃ¬m tháº¥y tÃ i khoáº£n."), {
         status: 404,
       });
     res.json({
@@ -841,7 +841,7 @@ app.put(
   asyncRoute(async (req, res) => {
     const current = await getUser(authId(req));
     if (!current)
-      throw Object.assign(new Error("Không tìm thấy tài khoản."), {
+      throw Object.assign(new Error("KhÃ´ng tÃ¬m tháº¥y tÃ i khoáº£n."), {
         status: 404,
       });
     const data = z
@@ -859,7 +859,7 @@ app.put(
       .refine(
         (value) => !value.password || value.password === value.confirmPassword,
         {
-          message: "Mật khẩu xác nhận không khớp.",
+          message: "Máº­t kháº©u xÃ¡c nháº­n khÃ´ng khá»›p.",
           path: ["confirmPassword"],
         },
       )
@@ -869,13 +869,13 @@ app.put(
       (!data.currentPassword ||
         !(await bcrypt.compare(data.currentPassword, current.passwordHash)))
     )
-      throw Object.assign(new Error("Mật khẩu hiện tại không đúng."), {
+      throw Object.assign(new Error("Máº­t kháº©u hiá»‡n táº¡i khÃ´ng Ä‘Ãºng."), {
         status: 400,
         code: "CURRENT_PASSWORD_INVALID",
       });
     const usernameOwner = await redis.get(keys.userUsername(data.username));
     if (usernameOwner && usernameOwner !== current.id)
-      throw Object.assign(new Error("Tên đăng nhập đã được sử dụng."), {
+      throw Object.assign(new Error("TÃªn Ä‘Äƒng nháº­p Ä‘Ã£ Ä‘Æ°á»£c sá»­ dá»¥ng."), {
         status: 409,
         code: "USERNAME_EXISTS",
       });
@@ -912,7 +912,7 @@ app.put(
 async function currentAdmin(req: Request) {
   const user = await getUser(authId(req));
   if (!user || user.role !== "ADMIN" || user.status === "SUSPENDED")
-    throw Object.assign(new Error("Tài khoản không còn quyền quản trị viên."), {
+    throw Object.assign(new Error("TÃ i khoáº£n khÃ´ng cÃ²n quyá»n quáº£n trá»‹ viÃªn."), {
       status: 403,
       code: "ADMIN_REQUIRED",
     });
@@ -1074,12 +1074,12 @@ app.post(
     ]);
 
     if (existingEmail)
-      throw Object.assign(new Error("Địa chỉ email đã được sử dụng."), {
+      throw Object.assign(new Error("Äá»‹a chá»‰ email Ä‘Ã£ Ä‘Æ°á»£c sá»­ dá»¥ng."), {
         status: 409,
         code: "EMAIL_EXISTS",
       });
     if (existingUsername)
-      throw Object.assign(new Error("Tên đăng nhập đã được sử dụng."), {
+      throw Object.assign(new Error("TÃªn Ä‘Äƒng nháº­p Ä‘Ã£ Ä‘Æ°á»£c sá»­ dá»¥ng."), {
         status: 409,
         code: "USERNAME_EXISTS",
       });
@@ -1170,7 +1170,7 @@ app.patch(
     const admin = await currentAdmin(req);
     const target = await getUser(req.params.id);
     if (!target)
-      throw Object.assign(new Error("Không tìm thấy người dùng."), {
+      throw Object.assign(new Error("KhÃ´ng tÃ¬m tháº¥y ngÆ°á»i dÃ¹ng."), {
         status: 404,
       });
     const patch = z
@@ -1179,7 +1179,7 @@ app.patch(
         status: z.enum(["ACTIVE", "SUSPENDED"]).optional(),
       })
       .refine((value) => value.role || value.status, {
-        message: "Không có thay đổi cần lưu.",
+        message: "KhÃ´ng cÃ³ thay Ä‘á»•i cáº§n lÆ°u.",
       })
       .parse(req.body);
     const nextRole = patch.role || target.role;
@@ -1189,7 +1189,7 @@ app.patch(
       (nextRole !== "ADMIN" || nextStatus !== "ACTIVE")
     )
       throw Object.assign(
-        new Error("Bạn không thể tự hạ quyền hoặc khóa tài khoản của mình."),
+        new Error("Báº¡n khÃ´ng thá»ƒ tá»± háº¡ quyá»n hoáº·c khÃ³a tÃ i khoáº£n cá»§a mÃ¬nh."),
         { status: 409, code: "ADMIN_SELF_PROTECTED" },
       );
     if (
@@ -1203,7 +1203,7 @@ app.patch(
       );
       if (activeAdmins.length <= 1)
         throw Object.assign(
-          new Error("Hệ thống phải còn ít nhất một quản trị viên hoạt động."),
+          new Error("Há»‡ thá»‘ng pháº£i cÃ²n Ã­t nháº¥t má»™t quáº£n trá»‹ viÃªn hoáº¡t Ä‘á»™ng."),
           { status: 409, code: "LAST_ADMIN_PROTECTED" },
         );
     }
@@ -1247,7 +1247,7 @@ app.put(
     const admin = await currentAdmin(req);
     const target = await getUser(req.params.id);
     if (!target)
-      throw Object.assign(new Error("Người dùng không tồn tại."), {
+      throw Object.assign(new Error("NgÆ°á»i dÃ¹ng khÃ´ng tá»“n táº¡i."), {
         status: 404,
       });
 
@@ -1260,7 +1260,7 @@ app.put(
     if (admin.id === target.id) {
       throw Object.assign(
         new Error(
-          "Vui lòng sử dụng chức năng Đổi mật khẩu trong Cài đặt hồ sơ thay vì thao tác này.",
+          "Vui lÃ²ng sá»­ dá»¥ng chá»©c nÄƒng Äá»•i máº­t kháº©u trong CÃ i Ä‘áº·t há»“ sÆ¡ thay vÃ¬ thao tÃ¡c nÃ y.",
         ),
         { status: 409, code: "ADMIN_SELF_PROTECTED" },
       );
@@ -1288,7 +1288,7 @@ app.put(
       )
       .exec();
 
-    res.json({ message: "Đã đặt lại mật khẩu thành công." });
+    res.json({ message: "ÄÃ£ Ä‘áº·t láº¡i máº­t kháº©u thÃ nh cÃ´ng." });
   }),
 );
 
@@ -1464,7 +1464,7 @@ app.get(
   asyncRoute(async (req, res) => {
     const quiz = await getQuiz(req.params.id);
     if (!quiz)
-      throw Object.assign(new Error("Không tìm thấy quiz."), {
+      throw Object.assign(new Error("KhÃ´ng tÃ¬m tháº¥y quiz."), {
         status: 404,
         code: "QUIZ_NOT_FOUND",
       });
@@ -1473,13 +1473,13 @@ app.get(
       req.auth?.kind === "host" &&
       (req.auth.role === "ADMIN" || req.auth.sub === quiz.ownerId);
     if (quiz.status !== "PUBLISHED" && !canEdit)
-      throw Object.assign(new Error("Không tìm thấy quiz công khai."), {
+      throw Object.assign(new Error("KhÃ´ng tÃ¬m tháº¥y quiz cÃ´ng khai."), {
         status: 404,
         code: "QUIZ_NOT_FOUND",
       });
     if (editorRequested && !canEdit)
       throw Object.assign(
-        new Error("Bạn không có quyền xem đáp án của quiz này."),
+        new Error("Báº¡n khÃ´ng cÃ³ quyá»n xem Ä‘Ã¡p Ã¡n cá»§a quiz nÃ y."),
         { status: 403, code: "FORBIDDEN" },
       );
     const questions = await listQuestions(quiz.id);
@@ -1507,7 +1507,7 @@ app.post(
       !question ||
       question.quizId !== quiz.id
     )
-      throw Object.assign(new Error("Không tìm thấy câu hỏi luyện tập."), {
+      throw Object.assign(new Error("KhÃ´ng tÃ¬m tháº¥y cÃ¢u há»i luyá»‡n táº­p."), {
         status: 404,
       });
     const { answer } = z
@@ -1539,7 +1539,7 @@ app.post(
     const data = quizInput.parse(req.body);
     if (data.status === "PUBLISHED")
       throw Object.assign(
-        new Error("Hãy tạo và kiểm tra câu hỏi trước khi xuất bản quiz."),
+        new Error("HÃ£y táº¡o vÃ  kiá»ƒm tra cÃ¢u há»i trÆ°á»›c khi xuáº¥t báº£n quiz."),
         { status: 400, code: "QUIZ_INVALID" },
       );
     const now = new Date().toISOString();
@@ -1585,7 +1585,7 @@ app.post(
       ...source,
       id: nanoid(12),
       ownerId: authId(req),
-      title: `${source.title} (bản sao)`,
+      title: `${source.title} (báº£n sao)`,
       status: "DRAFT",
       createdAt: now,
       updatedAt: now,
@@ -1629,7 +1629,7 @@ app.post(
         context: z.string().trim().max(30_000).default(""),
         sourceText: z.string().trim().max(30_000).default(""),
         title: z.string().trim().max(120).default(""),
-        category: z.string().trim().max(50).default("Giáo dục"),
+        category: z.string().trim().max(50).default("GiÃ¡o dá»¥c"),
         questionCount: z.coerce.number().int().min(3).max(15).default(5),
         timeLimitSec: z.coerce.number().int().min(5).max(300).default(20),
         basePoints: z.coerce.number().int().min(100).max(5000).default(600),
@@ -1639,7 +1639,7 @@ app.post(
       .parse(req.body);
     if (!input.subject && !input.context && !input.sourceText && !req.file)
       throw Object.assign(
-        new Error("Hãy nhập chủ đề, nội dung tham khảo hoặc tải lên một PDF."),
+        new Error("HÃ£y nháº­p chá»§ Ä‘á», ná»™i dung tham kháº£o hoáº·c táº£i lÃªn má»™t PDF."),
         {
           status: 400,
           code: "GENERATOR_SOURCE_REQUIRED",
@@ -1658,7 +1658,7 @@ app.post(
       }
       if (sourceText.trim().length < 80)
         throw Object.assign(
-          new Error("PDF không có đủ văn bản có thể đọc để tạo câu hỏi."),
+          new Error("PDF khÃ´ng cÃ³ Ä‘á»§ vÄƒn báº£n cÃ³ thá»ƒ Ä‘á»c Ä‘á»ƒ táº¡o cÃ¢u há»i."),
           { status: 400, code: "PDF_TEXT_EMPTY" },
         );
     } else if (req.file) {
@@ -1668,7 +1668,7 @@ app.post(
     const subject =
       input.subject ||
       req.file?.originalname.replace(/\.(pdf|csv)$/i, "") ||
-      "Quiz tự động";
+      "Quiz tá»± Ä‘á»™ng";
     const generation = isCsv
       ? {
           questions: importQuizQuestionsFromCsv(sourceText),
@@ -1687,8 +1687,8 @@ app.post(
           throw Object.assign(
             new Error(
               req.file
-                ? "AI chưa sẵn sàng để đọc PDF. Hãy khởi động AI cục bộ hoặc tải tệp CSV theo mẫu."
-                : "AI chưa sẵn sàng để tạo câu hỏi. Hãy khởi động AI cục bộ hoặc nhập câu hỏi bằng CSV.",
+                ? "AI chÆ°a sáºµn sÃ ng Ä‘á»ƒ Ä‘á»c PDF. HÃ£y khá»Ÿi Ä‘á»™ng AI cá»¥c bá»™ hoáº·c táº£i tá»‡p CSV theo máº«u."
+                : "AI chÆ°a sáºµn sÃ ng Ä‘á»ƒ táº¡o cÃ¢u há»i. HÃ£y khá»Ÿi Ä‘á»™ng AI cá»¥c bá»™ hoáº·c nháº­p cÃ¢u há»i báº±ng CSV.",
             ),
             {
               status: 503,
@@ -1708,8 +1708,8 @@ app.post(
       description:
         input.context ||
         (req.file
-          ? `Được tạo từ tệp ${req.file.originalname}. Hãy rà soát câu hỏi và đáp án trước khi xuất bản.`
-          : `Được tạo tự động từ chủ đề “${subject}”. Hãy rà soát câu hỏi và đáp án trước khi xuất bản.`),
+          ? `ÄÆ°á»£c táº¡o tá»« tá»‡p ${req.file.originalname}. HÃ£y rÃ  soÃ¡t cÃ¢u há»i vÃ  Ä‘Ã¡p Ã¡n trÆ°á»›c khi xuáº¥t báº£n.`
+          : `ÄÆ°á»£c táº¡o tá»± Ä‘á»™ng tá»« chá»§ Ä‘á» â€œ${subject}â€. HÃ£y rÃ  soÃ¡t cÃ¢u há»i vÃ  Ä‘Ã¡p Ã¡n trÆ°á»›c khi xuáº¥t báº£n.`),
       category: input.category,
       coverColor: "#2B9FBD",
       status: "DRAFT",
@@ -1772,14 +1772,14 @@ const questionInput = questionBaseInput.superRefine((question, context) => {
     context.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["options"],
-      message: "Mã lựa chọn không được trùng nhau.",
+      message: "MÃ£ lá»±a chá»n khÃ´ng Ä‘Æ°á»£c trÃ¹ng nhau.",
     });
   if (question.type === "TEXT") {
     if (!question.acceptedAnswers.length)
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["acceptedAnswers"],
-        message: "Câu hỏi văn bản phải có ít nhất một đáp án được chấp nhận.",
+        message: "CÃ¢u há»i vÄƒn báº£n pháº£i cÃ³ Ã­t nháº¥t má»™t Ä‘Ã¡p Ã¡n Ä‘Æ°á»£c cháº¥p nháº­n.",
       });
     return;
   }
@@ -1787,26 +1787,26 @@ const questionInput = questionBaseInput.superRefine((question, context) => {
     context.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["options"],
-      message: "Câu hỏi lựa chọn phải có ít nhất hai phương án.",
+      message: "CÃ¢u há»i lá»±a chá»n pháº£i cÃ³ Ã­t nháº¥t hai phÆ°Æ¡ng Ã¡n.",
     });
   if (!optionIds.includes(question.correctOptionId))
     context.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["correctOptionId"],
-      message: "Đáp án đúng phải thuộc danh sách lựa chọn.",
+      message: "ÄÃ¡p Ã¡n Ä‘Ãºng pháº£i thuá»™c danh sÃ¡ch lá»±a chá»n.",
     });
   if (question.type === "TRUE_FALSE" && question.options.length !== 2)
     context.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["options"],
-      message: "Câu hỏi Đúng/Sai phải có đúng hai lựa chọn.",
+      message: "CÃ¢u há»i ÄÃºng/Sai pháº£i cÃ³ Ä‘Ãºng hai lá»±a chá»n.",
     });
 });
 
 async function assertQuizPublishable(quizId: string) {
   const questions = await listQuestions(quizId);
   if (!questions.length)
-    throw Object.assign(new Error("Quiz phải có ít nhất một câu hỏi."), {
+    throw Object.assign(new Error("Quiz pháº£i cÃ³ Ã­t nháº¥t má»™t cÃ¢u há»i."), {
       status: 400,
       code: "QUIZ_EMPTY",
     });
@@ -1815,7 +1815,7 @@ async function assertQuizPublishable(quizId: string) {
   );
   if (invalid)
     throw Object.assign(
-      new Error(`Câu hỏi “${invalid.prompt}” chưa có cấu hình đáp án hợp lệ.`),
+      new Error(`CÃ¢u há»i â€œ${invalid.prompt}â€ chÆ°a cÃ³ cáº¥u hÃ¬nh Ä‘Ã¡p Ã¡n há»£p lá»‡.`),
       { status: 400, code: "QUIZ_INVALID" },
     );
 }
@@ -1840,7 +1840,7 @@ app.put(
   asyncRoute(async (req, res) => {
     const current = await getQuestion(req.params.id);
     if (!current)
-      throw Object.assign(new Error("Không tìm thấy câu hỏi."), {
+      throw Object.assign(new Error("KhÃ´ng tÃ¬m tháº¥y cÃ¢u há»i."), {
         status: 404,
       });
     await ownedQuiz(req, current.quizId);
@@ -1861,7 +1861,7 @@ app.delete(
   asyncRoute(async (req, res) => {
     const q = await getQuestion(req.params.id);
     if (!q)
-      throw Object.assign(new Error("Không tìm thấy câu hỏi."), {
+      throw Object.assign(new Error("KhÃ´ng tÃ¬m tháº¥y cÃ¢u há»i."), {
         status: 404,
       });
     await ownedQuiz(req, q.quizId);
@@ -1893,7 +1893,7 @@ app.post(
     await assertQuizPublishable(quiz.id);
     const questions = await listQuestions(quiz.id);
     if (!questions.length)
-      throw Object.assign(new Error("Quiz phải có ít nhất một câu hỏi."), {
+      throw Object.assign(new Error("Quiz pháº£i cÃ³ Ã­t nháº¥t má»™t cÃ¢u há»i."), {
         status: 400,
         code: "QUIZ_EMPTY",
       });
@@ -1958,7 +1958,7 @@ app.patch(
     const session = await ownedSession(req, req.params.id);
     if (session.state !== "LOBBY")
       throw Object.assign(
-        new Error("Chỉ có thể đổi thiết lập khi phòng đang chờ."),
+        new Error("Chá»‰ cÃ³ thá»ƒ Ä‘á»•i thiáº¿t láº­p khi phÃ²ng Ä‘ang chá»."),
         { status: 409, code: "SETTINGS_LOCKED" },
       );
     const settings = settingsSchema.parse(req.body);
@@ -1973,7 +1973,7 @@ app.get(
   asyncRoute(async (req, res) => {
     const s = await getSessionByPin(req.params.pin);
     if (!s)
-      throw Object.assign(new Error("PIN không tồn tại hoặc đã hết hạn."), {
+      throw Object.assign(new Error("PIN khÃ´ng tá»“n táº¡i hoáº·c Ä‘Ã£ háº¿t háº¡n."), {
         status: 404,
         code: "PIN_NOT_FOUND",
       });
@@ -2019,13 +2019,13 @@ app.get(
       }
     } catch {}
     if (viewer === "public")
-      throw Object.assign(new Error("Vui lòng đăng nhập để xem phiên chơi."), {
+      throw Object.assign(new Error("Vui lÃ²ng Ä‘Äƒng nháº­p Ä‘á»ƒ xem phiÃªn chÆ¡i."), {
         status: 401,
         code: "UNAUTHORIZED",
       });
     const snap = await gameSnapshot(req.params.id, pid, viewer);
     if (!snap)
-      throw Object.assign(new Error("Không tìm thấy phiên."), { status: 404 });
+      throw Object.assign(new Error("KhÃ´ng tÃ¬m tháº¥y phiÃªn."), { status: 404 });
     if (
       [
         "GAME_COUNTDOWN",
@@ -2054,7 +2054,7 @@ app.post(
       .parse(req.body);
     const s = await getSessionByPin(data.pin);
     if (!s)
-      throw Object.assign(new Error("PIN không tồn tại hoặc đã hết hạn."), {
+      throw Object.assign(new Error("PIN khÃ´ng tá»“n táº¡i hoáº·c Ä‘Ã£ háº¿t háº¡n."), {
         status: 404,
         code: "PIN_NOT_FOUND",
       });
@@ -2064,7 +2064,7 @@ app.post(
     )
       throw Object.assign(
         new Error(
-          "Host là người điều khiển phòng và không được tính như một người chơi trong chính phòng này.",
+          "Host lÃ  ngÆ°á»i Ä‘iá»u khiá»ƒn phÃ²ng vÃ  khÃ´ng Ä‘Æ°á»£c tÃ­nh nhÆ° má»™t ngÆ°á»i chÆ¡i trong chÃ­nh phÃ²ng nÃ y.",
         ),
         { status: 409, code: "HOST_CANNOT_JOIN_OWN_SESSION" },
       );
@@ -2080,11 +2080,11 @@ app.post(
   asyncRoute(async (req, res) => {
     const s = await ownedSession(req, req.params.id);
     if (s.state !== "LOBBY")
-      throw Object.assign(new Error("Chỉ có thể bắt đầu từ lobby."), {
+      throw Object.assign(new Error("Chá»‰ cÃ³ thá»ƒ báº¯t Ä‘áº§u tá»« lobby."), {
         status: 409,
       });
     if ((await redis.scard(keys.sessionPlayers(s.id))) === 0)
-      throw Object.assign(new Error("Cần ít nhất một người chơi để bắt đầu."), {
+      throw Object.assign(new Error("Cáº§n Ã­t nháº¥t má»™t ngÆ°á»i chÆ¡i Ä‘á»ƒ báº¯t Ä‘áº§u."), {
         status: 409,
         code: "SESSION_EMPTY",
       });
@@ -2107,7 +2107,7 @@ app.post(
     const s = await ownedSession(req, req.params.id);
     if (s.state !== "QUESTION_RESULT")
       throw Object.assign(
-        new Error("Đáp án được công bố tự động; chưa thể chuyển câu."),
+        new Error("ÄÃ¡p Ã¡n Ä‘Æ°á»£c cÃ´ng bá»‘ tá»± Ä‘á»™ng; chÆ°a thá»ƒ chuyá»ƒn cÃ¢u."),
         {
           status: 409,
           code: "AUTO_FLOW_ACTIVE",
@@ -2126,7 +2126,7 @@ app.post(
         s.state,
       )
     )
-      throw Object.assign(new Error("Không thể bỏ qua câu hỏi lúc này."), {
+      throw Object.assign(new Error("KhÃ´ng thá»ƒ bá» qua cÃ¢u há»i lÃºc nÃ y."), {
         status: 409,
       });
     res.json(await moveToNextQuestion(s.id));
@@ -2143,13 +2143,13 @@ app.post(
         !s ||
         !["QUESTION_PREVIEW", "RUNNING", "QUESTION_RESULT"].includes(s.state)
       )
-        throw Object.assign(new Error("Phiên không thể tạm dừng lúc này."), {
+        throw Object.assign(new Error("PhiÃªn khÃ´ng thá»ƒ táº¡m dá»«ng lÃºc nÃ y."), {
           status: 409,
         });
       const questions = await sessionQuestions(s);
       const q = questions[s.currentQuestionIndex];
       if (!q)
-        throw Object.assign(new Error("Không có câu hỏi hiện tại."), {
+        throw Object.assign(new Error("KhÃ´ng cÃ³ cÃ¢u há»i hiá»‡n táº¡i."), {
           status: 409,
         });
       const elapsed = Math.max(
@@ -2178,13 +2178,13 @@ app.post(
     const updated = await withPhaseLock(req.params.id, async () => {
       const s = await getSession(req.params.id);
       if (s?.state !== "PAUSED" || !s.pausedState)
-        throw Object.assign(new Error("Phiên hiện không tạm dừng."), {
+        throw Object.assign(new Error("PhiÃªn hiá»‡n khÃ´ng táº¡m dá»«ng."), {
           status: 409,
         });
       const questions = await sessionQuestions(s);
       const q = questions[s.currentQuestionIndex];
       if (!q)
-        throw Object.assign(new Error("Không có câu hỏi hiện tại."), {
+        throw Object.assign(new Error("KhÃ´ng cÃ³ cÃ¢u há»i hiá»‡n táº¡i."), {
           status: 409,
         });
       const total = phaseDurationMs(s, q);
@@ -2212,7 +2212,7 @@ app.post(
   asyncRoute(async (req, res) => {
     const s = await ownedSession(req, req.params.id);
     if (s.state !== "QUESTION_PREVIEW")
-      throw Object.assign(new Error("Câu hỏi không ở pha chuẩn bị."), {
+      throw Object.assign(new Error("CÃ¢u há»i khÃ´ng á»Ÿ pha chuáº©n bá»‹."), {
         status: 409,
       });
     res.json(await openCurrentQuestion(s.id));
@@ -2224,7 +2224,7 @@ app.post(
   asyncRoute(async (req, res) => {
     const s = await ownedSession(req, req.params.id);
     if (s.state === "ENDED" || s.state === "CANCELLED")
-      throw Object.assign(new Error("Phiên này đã kết thúc."), {
+      throw Object.assign(new Error("PhiÃªn nÃ y Ä‘Ã£ káº¿t thÃºc."), {
         status: 409,
         code: "SESSION_ENDED",
       });
@@ -2243,7 +2243,7 @@ app.post(
   asyncRoute(async (req, res) => {
     const session = await ownedSession(req, req.params.id);
     if (session.state !== "LOBBY")
-      throw Object.assign(new Error("Chỉ có thể hủy phòng khi đang ở lobby."), {
+      throw Object.assign(new Error("Chá»‰ cÃ³ thá»ƒ há»§y phÃ²ng khi Ä‘ang á»Ÿ lobby."), {
         status: 409,
         code: "SESSION_NOT_CANCELLABLE",
       });
@@ -2261,7 +2261,7 @@ app.post(
   asyncRoute(async (req, res) => {
     const previous = await ownedSession(req, req.params.id);
     if (previous.state !== "ENDED")
-      throw Object.assign(new Error("Chỉ có thể chơi lại phiên đã kết thúc."), {
+      throw Object.assign(new Error("Chá»‰ cÃ³ thá»ƒ chÆ¡i láº¡i phiÃªn Ä‘Ã£ káº¿t thÃºc."), {
         status: 409,
         code: "SESSION_NOT_REPLAYABLE",
       });
@@ -2294,7 +2294,7 @@ app.post(
   asyncRoute(async (req, res) => {
     const s = await ownedSession(req, req.params.id);
     if (s.state !== "LOBBY")
-      throw Object.assign(new Error("Chỉ có thể loại người chơi ở lobby."), {
+      throw Object.assign(new Error("Chá»‰ cÃ³ thá»ƒ loáº¡i ngÆ°á»i chÆ¡i á»Ÿ lobby."), {
         status: 409,
       });
     await removePlayer(s.id, req.params.playerId);
@@ -2309,7 +2309,7 @@ app.post(
   requirePlayer,
   asyncRoute(async (req, res) => {
     if (req.auth?.kind !== "player" || req.auth.sessionId !== req.params.id)
-      throw Object.assign(new Error("Player token không thuộc phiên."), {
+      throw Object.assign(new Error("Player token khÃ´ng thuá»™c phiÃªn."), {
         status: 403,
       });
     const data = z
@@ -2325,22 +2325,22 @@ app.post(
       getQuestion(data.questionId),
     ]);
     if (!s || !player || !q)
-      throw Object.assign(new Error("Dữ liệu phiên không hợp lệ."), {
+      throw Object.assign(new Error("Dá»¯ liá»‡u phiÃªn khÃ´ng há»£p lá»‡."), {
         status: 404,
       });
     if (s.state !== "RUNNING")
-      throw Object.assign(new Error("Câu hỏi hiện không nhận đáp án."), {
+      throw Object.assign(new Error("CÃ¢u há»i hiá»‡n khÃ´ng nháº­n Ä‘Ã¡p Ã¡n."), {
         status: 409,
         code: "QUESTION_CLOSED",
       });
     const questions = await sessionQuestions(s);
     if (questions[s.currentQuestionIndex]?.id !== q.id)
-      throw Object.assign(new Error("Không phải câu hỏi hiện tại."), {
+      throw Object.assign(new Error("KhÃ´ng pháº£i cÃ¢u há»i hiá»‡n táº¡i."), {
         status: 409,
       });
     const elapsedMs = Date.now() - new Date(s.questionStartedAt).getTime();
     if (elapsedMs > q.timeLimitSec * 1000 + 1000)
-      throw Object.assign(new Error("Đã hết thời gian trả lời câu hỏi."), {
+      throw Object.assign(new Error("ÄÃ£ háº¿t thá»i gian tráº£ lá»i cÃ¢u há»i."), {
         status: 409,
         code: "QUESTION_TIMEOUT",
       });
@@ -2388,14 +2388,14 @@ app.get(
   requirePlayer,
   asyncRoute(async (req, res) => {
     if (req.auth?.kind !== "player" || req.auth.sessionId !== req.params.id)
-      throw Object.assign(new Error("Player token không thuộc phiên."), {
+      throw Object.assign(new Error("Player token khÃ´ng thuá»™c phiÃªn."), {
         status: 403,
       });
     const session = await getSession(req.params.id);
     if (!session)
-      throw Object.assign(new Error("Không tìm thấy phiên."), { status: 404 });
+      throw Object.assign(new Error("KhÃ´ng tÃ¬m tháº¥y phiÃªn."), { status: 404 });
     if (session.state !== "ENDED")
-      throw Object.assign(new Error("Kết quả chỉ có sau khi game kết thúc."), {
+      throw Object.assign(new Error("Káº¿t quáº£ chá»‰ cÃ³ sau khi game káº¿t thÃºc."), {
         status: 409,
       });
     res.json(await buildPlayerResult(req.params.id, req.auth.sub));
@@ -2407,7 +2407,7 @@ app.get(
   asyncRoute(async (req, res) => {
     const session = await getSession(req.params.id);
     if (!session)
-      throw Object.assign(new Error("Không tìm thấy phiên."), { status: 404 });
+      throw Object.assign(new Error("KhÃ´ng tÃ¬m tháº¥y phiÃªn."), { status: 404 });
     const hostCanSee =
       req.auth?.kind === "host" &&
       (req.auth.role === "ADMIN" || req.auth.sub === session.hostId);
@@ -2415,7 +2415,7 @@ app.get(
       req.auth?.kind === "player" && req.auth.sessionId === session.id;
     if (!hostCanSee && !playerCanSee)
       throw Object.assign(
-        new Error("Bạn không có quyền xem bảng xếp hạng này."),
+        new Error("Báº¡n khÃ´ng cÃ³ quyá»n xem báº£ng xáº¿p háº¡ng nÃ y."),
         {
           status: 401,
           code: "UNAUTHORIZED",
@@ -2508,7 +2508,7 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (err instanceof z.ZodError) {
     res.status(400).json({
       code: "VALIDATION_ERROR",
-      message: "Dữ liệu không hợp lệ.",
+      message: "Dá»¯ liá»‡u khÃ´ng há»£p lá»‡.",
       details: err.flatten(),
     });
     return;
@@ -2524,7 +2524,7 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     console.warn(`[${status}] ${e.code || "REQUEST_REJECTED"}: ${e.message}`);
   res.status(status).json({
     code: e.code ?? "INTERNAL_ERROR",
-    message: status < 500 ? e.message : "Hệ thống gặp lỗi, vui lòng thử lại.",
+    message: status < 500 ? e.message : "Há»‡ thá»‘ng gáº·p lá»—i, vui lÃ²ng thá»­ láº¡i.",
   });
 });
 
@@ -2537,7 +2537,7 @@ if (existsSync(webIndex)) {
     if (req.path.startsWith("/api/")) {
       res.status(404).json({
         code: "API_NOT_FOUND",
-        message: "API không tồn tại.",
+        message: "API khÃ´ng tá»“n táº¡i.",
       });
       return;
     }
@@ -2545,7 +2545,7 @@ if (existsSync(webIndex)) {
   });
 } else if (config.NODE_ENV === "production") {
   console.warn(
-    `[WEB_BUILD_MISSING] Không tìm thấy ${webIndex}. Hãy chạy npm run build trước khi start.`,
+    `[WEB_BUILD_MISSING] KhÃ´ng tÃ¬m tháº¥y ${webIndex}. HÃ£y cháº¡y npm run build trÆ°á»›c khi start.`,
   );
 }
 
