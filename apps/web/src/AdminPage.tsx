@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   Activity,
+  Archive,
   Ban,
   Bot,
   CheckCircle2,
   Clock3,
   Database,
+  Download,
   ExternalLink,
   FileQuestion,
   Globe2,
@@ -15,16 +17,27 @@ import {
   Moon,
   Play,
   RefreshCw,
+  RotateCcw,
   Search,
-  Server,
   Shield,
   Sun,
+  Trash2,
   UserCog,
   Users,
   X,
   Zap,
+  KeyRound,
+  Eye,
+  EyeOff,
+  UserPlus,
 } from "lucide-react";
-import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import {
+  Link,
+  Navigate,
+  useLocation,
+  useNavigate,
+  useBlocker,
+} from "react-router-dom";
 import { hostToken, request } from "./api";
 import { usePreferences } from "./preferences";
 
@@ -104,6 +117,18 @@ type SystemData = {
   checkedAt: string;
 };
 
+type BackupSummary = {
+  id: string;
+  label: string;
+  reason: "MANUAL" | "PRE_RESTORE";
+  createdAt: string;
+  namespace: string;
+  appVersion: string;
+  keyCount: number;
+  sizeBytes: number;
+  checksum: string;
+};
+
 type Confirmation = {
   title: string;
   message: string;
@@ -127,6 +152,33 @@ const readStoredUser = (): StoredUser => {
     return {};
   }
 };
+
+function Pagination({
+  page,
+  total,
+  onPageChange,
+  tr,
+}: {
+  page: number;
+  total: number;
+  onPageChange: (p: number) => void;
+  tr: (vi: string, en: string) => string;
+}) {
+  if (total <= 1) return null;
+  return (
+    <div className="admin-pagination">
+      <button onClick={() => onPageChange(page - 1)} disabled={page <= 1}>
+        {tr("Trước", "Prev")}
+      </button>
+      <span>
+        {tr("Trang", "Page")} {page} / {total}
+      </span>
+      <button onClick={() => onPageChange(page + 1)} disabled={page >= total}>
+        {tr("Sau", "Next")}
+      </button>
+    </div>
+  );
+}
 
 const dateTime = (value: string, locale: "vi" | "en") =>
   value
@@ -170,15 +222,319 @@ function useAdminData<T>(path: string, refresh: number) {
 function AdminLoading() {
   const { tr } = usePreferences();
   return (
-    <div className="admin-loading">
-      <RefreshCw />
-      {tr("Đang tải dữ liệu quản trị...", "Loading admin data...")}
+    <div
+      className="admin-loading"
+      role="status"
+      aria-label={tr("Đang tải dữ liệu quản trị", "Loading admin data")}
+    >
+      <div className="admin-loading-heading">
+        <span>
+          <RefreshCw />
+        </span>
+        <div>
+          <b>{tr("Đang đồng bộ dữ liệu", "Syncing data")}</b>
+          <small>
+            {tr(
+              "RankRush đang đọc trạng thái dữ liệu mới nhất.",
+              "RankRush is loading the latest data status.",
+            )}
+          </small>
+        </div>
+      </div>
+      <div className="admin-skeleton-grid" aria-hidden="true">
+        {Array.from({ length: 4 }, (_, index) => (
+          <span key={index}>
+            <i />
+            <i />
+            <i />
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
 
 function AdminError({ message }: { message: string }) {
   return message ? <div className="admin-error">{message}</div> : null;
+}
+
+function AdminPasswordResetModal({
+  user,
+  busy,
+  error,
+  onClose,
+  onConfirm,
+}: {
+  user: AdminUser | null;
+  busy: boolean;
+  error: string;
+  onClose: () => void;
+  onConfirm: (password: string) => Promise<void>;
+}) {
+  const { tr } = usePreferences();
+  const [password, setPassword] = useState("");
+  const [show, setShow] = useState(false);
+
+  if (!user) return null;
+
+  return (
+    <div className="admin-modal-backdrop" role="presentation">
+      <div className="admin-modal" role="dialog" aria-modal="true">
+        <button className="admin-modal-close" onClick={onClose} disabled={busy}>
+          <X />
+        </button>
+        <div className="admin-modal-icon">
+          <KeyRound />
+        </div>
+        <h2 style={{ textAlign: "center" }}>
+          {tr("Đặt lại mật khẩu", "Reset Password")}
+        </h2>
+        <p style={{ textAlign: "center", margin: "10px 0 0" }}>
+          {tr(
+            `Đổi mật khẩu cho ${user.displayName}.`,
+            `Change password for ${user.displayName}.`,
+          )}
+        </p>
+        <div className="admin-modal-form">
+          <label>
+            {tr("Mật khẩu mới", "New Password")}
+            <div className="admin-password-wrapper">
+              <input
+                type={show ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder={tr("Nhập mật khẩu...", "Enter password...")}
+                autoFocus
+              />
+              <button
+                type="button"
+                onClick={() => setShow(!show)}
+                title={tr("Hiện/ẩn mật khẩu", "Show/hide password")}
+              >
+                {show ? <EyeOff /> : <Eye />}
+              </button>
+            </div>
+          </label>
+        </div>
+        <div className="admin-modal-actions">
+          <button
+            className="admin-button secondary"
+            onClick={() => {
+              const random = Math.random().toString(36).slice(-8);
+              setPassword(random);
+              setShow(true);
+            }}
+            disabled={busy}
+          >
+            <Zap />
+            {tr("Tạo ngẫu nhiên", "Generate random")}
+          </button>
+          <button
+            className="admin-button primary"
+            onClick={() =>
+              onConfirm(password.trim() || Math.random().toString(36).slice(-8))
+            }
+            disabled={busy}
+          >
+            {busy ? <RefreshCw className="spin" /> : <CheckCircle2 />}
+            {busy
+              ? tr("Đang cập nhật...", "Updating...")
+              : tr("Xác nhận", "Confirm")}
+          </button>
+        </div>
+        {error && (
+          <div className="admin-form-alert" role="alert">
+            <Ban />
+            <span>{error}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AdminCreateUserModal({
+  open,
+  busy,
+  error,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  busy: boolean;
+  error: string;
+  onClose: () => void;
+  onConfirm: (data: any) => Promise<void>;
+}) {
+  const { tr } = usePreferences();
+  const [form, setForm] = useState({
+    displayName: "",
+    username: "",
+    email: "",
+    password: "",
+    role: "HOST",
+  });
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setForm({
+      displayName: "",
+      username: "",
+      email: "",
+      password: "",
+      role: "HOST",
+    });
+    setShow(false);
+  }, [open]);
+
+  if (!open) return null;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const suffix = `${Date.now().toString(36).slice(-4)}${Math.random()
+      .toString(36)
+      .slice(2, 5)}`;
+    void onConfirm({
+      ...form,
+      displayName:
+        form.displayName.trim() || `${tr("Người dùng", "User")} ${suffix}`,
+      username: form.username.trim().toLowerCase() || `user_${suffix}`,
+      password: form.password.trim() || Math.random().toString(36).slice(-8),
+    });
+  };
+
+  return (
+    <div className="admin-modal-backdrop" role="presentation">
+      <div
+        className="admin-modal"
+        role="dialog"
+        aria-modal="true"
+        style={{ width: "min(480px, 100%)" }}
+      >
+        <button className="admin-modal-close" onClick={onClose} disabled={busy}>
+          <X />
+        </button>
+        <div className="admin-modal-icon">
+          <UserPlus />
+        </div>
+        <h2 style={{ textAlign: "center" }}>
+          {tr("Thêm tài khoản mới", "Add new account")}
+        </h2>
+        <p className="admin-modal-description">
+          {tr(
+            "Chỉ email là bắt buộc. Hệ thống có thể tự tạo tên và mật khẩu.",
+            "Only email is required. Names and password can be generated automatically.",
+          )}
+        </p>
+        <form onSubmit={handleSubmit} className="admin-modal-form">
+          <label>
+            <span className="admin-field-label">
+              {tr("Tên hiển thị", "Display name")}
+              <small>{tr("Tùy chọn", "Optional")}</small>
+            </span>
+            <input
+              value={form.displayName}
+              onChange={(e) =>
+                setForm({ ...form, displayName: e.target.value })
+              }
+              placeholder={tr(
+                "Để trống để hệ thống tự tạo",
+                "Leave blank to generate automatically",
+              )}
+              autoFocus
+            />
+          </label>
+          <label>
+            <span className="admin-field-label">
+              {tr("Tên đăng nhập", "Username")}
+              <small>{tr("Tùy chọn", "Optional")}</small>
+            </span>
+            <input
+              value={form.username}
+              onChange={(e) => setForm({ ...form, username: e.target.value })}
+              placeholder={tr(
+                "Để trống để hệ thống tự tạo",
+                "Leave blank to generate automatically",
+              )}
+              autoCapitalize="none"
+              autoCorrect="off"
+            />
+          </label>
+          <label>
+            <span className="admin-field-label">
+              {tr("Địa chỉ email", "Email address")}
+              <small>{tr("Bắt buộc", "Required")}</small>
+            </span>
+            <input
+              type="email"
+              required
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              placeholder="user@example.com"
+            />
+          </label>
+          <label>
+            <span className="admin-field-label">
+              {tr("Mật khẩu", "Password")}
+              <small>{tr("Tùy chọn", "Optional")}</small>
+            </span>
+            <div className="admin-password-wrapper">
+              <input
+                type={show ? "text" : "password"}
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+                placeholder={tr("Để trống = ngẫu nhiên", "Blank = random")}
+              />
+              <button
+                type="button"
+                onClick={() => setShow(!show)}
+                title={tr("Hiện/ẩn mật khẩu", "Show/hide password")}
+              >
+                {show ? <EyeOff /> : <Eye />}
+              </button>
+            </div>
+          </label>
+          <label>
+            <span className="admin-field-label">{tr("Vai trò", "Role")}</span>
+            <select
+              value={form.role}
+              onChange={(e) => setForm({ ...form, role: e.target.value })}
+            >
+              <option value="HOST">Host</option>
+              <option value="ADMIN">Admin</option>
+            </select>
+          </label>
+          {error && (
+            <div className="admin-form-alert" role="alert">
+              <Ban />
+              <span>{error}</span>
+            </div>
+          )}
+          <div className="admin-modal-actions" style={{ marginTop: "10px" }}>
+            <button
+              type="button"
+              className="admin-button secondary"
+              onClick={onClose}
+              disabled={busy}
+            >
+              {tr("Hủy", "Cancel")}
+            </button>
+            <button
+              type="submit"
+              className="admin-button primary"
+              disabled={busy}
+            >
+              {busy ? <RefreshCw className="spin" /> : <CheckCircle2 />}
+              {busy
+                ? tr("Đang tạo...", "Creating...")
+                : tr("Tạo tài khoản", "Create account")}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
 }
 
 function AdminConfirm({
@@ -225,43 +581,34 @@ function AdminConfirm({
 }
 
 function AdminAppearance() {
-  const { locale, setLocale, theme, themePreference, setThemePreference, t } =
-    usePreferences();
+  const { locale, setLocale, theme, toggleTheme, t, tr } = usePreferences();
   return (
-    <div className="admin-appearance">
-      <label title={t("language")}>
+    <div className="admin-preferences">
+      <label className="admin-language-control" title={t("language")}>
         <Globe2 />
         <select
           value={locale}
           onChange={(event) => setLocale(event.target.value as "vi" | "en")}
           aria-label={t("language")}
         >
-          <option value="vi">VI</option>
-          <option value="en">EN</option>
+          <option value="vi">Tiếng Việt</option>
+          <option value="en">English</option>
         </select>
       </label>
-      <label title={t("appearance")}>
-        {themePreference === "system" ? (
-          <Monitor />
-        ) : theme === "dark" ? (
-          <Moon />
-        ) : (
-          <Sun />
-        )}
-        <select
-          value={themePreference}
-          onChange={(event) =>
-            setThemePreference(
-              event.target.value as "system" | "light" | "dark",
-            )
-          }
-          aria-label={t("appearance")}
-        >
-          <option value="system">{t("systemTheme")}</option>
-          <option value="light">{t("lightTheme")}</option>
-          <option value="dark">{t("darkTheme")}</option>
-        </select>
-      </label>
+      <button
+        type="button"
+        className="admin-theme-toggle"
+        title={t("appearance")}
+        onClick={toggleTheme}
+        aria-label={t("appearance")}
+      >
+        {theme === "dark" ? <Moon /> : <Sun />}
+        <span>
+          {theme === "dark"
+            ? tr("Chế độ tối", "Dark mode")
+            : tr("Chế độ sáng", "Light mode")}
+        </span>
+      </button>
     </div>
   );
 }
@@ -280,8 +627,9 @@ function AdminBrand() {
 }
 
 function AdminSidebar({ active, user }: { active: string; user: StoredUser }) {
-  const { tr } = usePreferences();
+  const { tr, t } = usePreferences();
   const navigate = useNavigate();
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const item = (
     key: string,
     to: string,
@@ -340,15 +688,73 @@ function AdminSidebar({ active, user }: { active: string; user: StoredUser }) {
         </div>
         <button
           title={tr("Đăng xuất", "Log out")}
-          onClick={() => {
-            localStorage.removeItem("rr_host_token");
-            localStorage.removeItem("rr_user");
-            navigate("/login");
-          }}
+          onClick={() => setShowLogoutConfirm(true)}
         >
           <LogOut />
         </button>
       </div>
+      {showLogoutConfirm && (
+        <div
+          className="confirm-backdrop"
+          style={{ position: "fixed", zIndex: 9999 }}
+          onClick={() => setShowLogoutConfirm(false)}
+        >
+          <section
+            className="confirm-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="confirm-dialog-heading">
+              <span className="confirm-dialog-icon">
+                <svg
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+              </span>
+              <div>
+                <span className="eyebrow">
+                  {tr("X\u00e1c nh\u1eadn", "Confirmation")}
+                </span>
+                <h2>{tr("Đăng xuất?", "Log out?")}</h2>
+              </div>
+            </div>
+            <p>
+              {tr(
+                "Bạn có chắc muốn đăng xuất khỏi tài khoản quản trị?",
+                "Are you sure you want to log out of the admin account?",
+              )}
+            </p>
+            <div className="confirm-dialog-actions">
+              <button
+                className="button button-secondary"
+                onClick={() => setShowLogoutConfirm(false)}
+              >
+                {tr("Kh\u00f4ng", "No")}
+              </button>
+              <button
+                className="button button-danger"
+                onClick={() => {
+                  setShowLogoutConfirm(false);
+                  localStorage.removeItem("rr_host_token");
+                  localStorage.removeItem("rr_user");
+                  navigate("/login");
+                }}
+              >
+                {tr("C\u00f3", "Yes")}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </aside>
   );
 }
@@ -489,6 +895,15 @@ function AdminUsers({ refresh }: { refresh: number }) {
   const [role, setRole] = useState<"ALL" | "HOST" | "ADMIN">("ALL");
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [busy, setBusy] = useState(false);
+  const [page, setPage] = useState(1);
+  const [resetUser, setResetUser] = useState<AdminUser | null>(null);
+  const [showAddUser, setShowAddUser] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [resetError, setResetError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  useEffect(() => setPage(1), [query, role]);
+
   const visible = useMemo(
     () =>
       (data || []).filter((user) => {
@@ -524,9 +939,69 @@ function AdminUsers({ refresh }: { refresh: number }) {
       setBusy(false);
     }
   };
+  const createUser = async (payload: any) => {
+    setBusy(true);
+    setCreateError("");
+    setNotice("");
+    try {
+      const newUser = await request<AdminUser>(`/admin/users`, {
+        method: "POST",
+        token: hostToken(),
+        body: JSON.stringify(payload),
+      });
+      setData((rows) => [newUser, ...(rows || [])]);
+      setShowAddUser(false);
+      setNotice(
+        tr(
+          `Đã tạo tài khoản @${newUser.username}.`,
+          `Created account @${newUser.username}.`,
+        ),
+      );
+    } catch (reason) {
+      setCreateError((reason as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const executePasswordReset = async (newPassword: string) => {
+    if (!resetUser) return;
+    setBusy(true);
+    setResetError("");
+    setNotice("");
+    try {
+      await request(`/admin/users/${resetUser.id}/reset-password`, {
+        method: "PUT",
+        token: hostToken(),
+        body: JSON.stringify({ newPassword }),
+      });
+
+      setNotice(
+        tr(
+          `Đã cập nhật mật khẩu cho ${resetUser.displayName}.`,
+          `Updated the password for ${resetUser.displayName}.`,
+        ),
+      );
+      setResetUser(null);
+    } catch (reason) {
+      setResetError((reason as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const totalPages = Math.ceil(visible.length / 10);
+  const pagedVisible = visible.slice((page - 1) * 10, page * 10);
+
   return (
     <section className="admin-panel admin-table-panel">
       <AdminError message={error} />
+      {notice && (
+        <div className="admin-success admin-user-notice" role="status">
+          <CheckCircle2 />
+          {notice}
+        </div>
+      )}
       <div className="admin-toolbar">
         <label className="admin-search">
           <Search />
@@ -547,6 +1022,18 @@ function AdminUsers({ refresh }: { refresh: number }) {
           <option value="HOST">Host</option>
           <option value="ADMIN">Admin</option>
         </select>
+        <button
+          className="admin-button"
+          onClick={() => {
+            setCreateError("");
+            setNotice("");
+            setShowAddUser(true);
+          }}
+          style={{ whiteSpace: "nowrap" }}
+        >
+          <UserPlus />
+          {tr("Thêm tài khoản", "Add user")}
+        </button>
       </div>
       {loading && !data ? (
         <AdminLoading />
@@ -564,7 +1051,7 @@ function AdminUsers({ refresh }: { refresh: number }) {
               </tr>
             </thead>
             <tbody>
-              {visible.map((user) => (
+              {pagedVisible.map((user) => (
                 <tr key={user.id}>
                   <td>
                     <div className="admin-user-cell">
@@ -600,6 +1087,17 @@ function AdminUsers({ refresh }: { refresh: number }) {
                   </td>
                   <td>
                     <div className="admin-row-actions">
+                      <button
+                        title={tr("Đặt lại mật khẩu", "Reset password")}
+                        disabled={user.id === currentUser.id}
+                        onClick={() => {
+                          setResetError("");
+                          setNotice("");
+                          setResetUser(user);
+                        }}
+                      >
+                        <KeyRound />
+                      </button>
                       <button
                         disabled={user.id === currentUser.id}
                         onClick={() =>
@@ -670,6 +1168,12 @@ function AdminUsers({ refresh }: { refresh: number }) {
               ))}
             </tbody>
           </table>
+          <Pagination
+            page={page}
+            total={totalPages}
+            onPageChange={setPage}
+            tr={tr}
+          />
           {!visible.length && (
             <div className="admin-empty">
               {tr(
@@ -680,6 +1184,30 @@ function AdminUsers({ refresh }: { refresh: number }) {
           )}
         </div>
       )}
+      <AdminPasswordResetModal
+        user={resetUser}
+        busy={busy}
+        error={resetError}
+        onClose={() => {
+          if (!busy) {
+            setResetError("");
+            setResetUser(null);
+          }
+        }}
+        onConfirm={executePasswordReset}
+      />
+      <AdminCreateUserModal
+        open={showAddUser}
+        busy={busy}
+        error={createError}
+        onClose={() => {
+          if (!busy) {
+            setCreateError("");
+            setShowAddUser(false);
+          }
+        }}
+        onConfirm={createUser}
+      />
       <AdminConfirm
         value={confirmation}
         busy={busy}
@@ -698,6 +1226,10 @@ function AdminSessions({ refresh }: { refresh: number }) {
   const [filter, setFilter] = useState("ALL");
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [busy, setBusy] = useState(false);
+  const [page, setPage] = useState(1);
+
+  useEffect(() => setPage(1), [filter]);
+
   const visible = (data || []).filter(
     (session) => filter === "ALL" || session.state === filter,
   );
@@ -719,6 +1251,10 @@ function AdminSessions({ refresh }: { refresh: number }) {
       setBusy(false);
     }
   };
+
+  const totalPages = Math.ceil(visible.length / 10);
+  const pagedVisible = visible.slice((page - 1) * 10, page * 10);
+
   return (
     <section className="admin-panel admin-table-panel">
       <AdminError message={error} />
@@ -756,7 +1292,7 @@ function AdminSessions({ refresh }: { refresh: number }) {
               </tr>
             </thead>
             <tbody>
-              {visible.map((session) => {
+              {pagedVisible.map((session) => {
                 const ended = ["ENDED", "CANCELLED"].includes(session.state);
                 return (
                   <tr key={session.id}>
@@ -826,6 +1362,12 @@ function AdminSessions({ refresh }: { refresh: number }) {
               })}
             </tbody>
           </table>
+          <Pagination
+            page={page}
+            total={totalPages}
+            onPageChange={setPage}
+            tr={tr}
+          />
           {!visible.length && (
             <div className="admin-empty">
               {tr(
@@ -907,91 +1449,348 @@ function AdminActivity({ refresh }: { refresh: number }) {
   );
 }
 
+const formatBytes = (bytes: number, locale: "vi" | "en") => {
+  if (!bytes) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const unit = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), 3);
+  return `${new Intl.NumberFormat(locale === "vi" ? "vi-VN" : "en-US", {
+    maximumFractionDigits: unit ? 1 : 0,
+  }).format(bytes / 1024 ** unit)} ${units[unit]}`;
+};
+
 function AdminSystem({ refresh }: { refresh: number }) {
   const { tr, locale } = usePreferences();
-  const { data, loading, error } = useAdminData<SystemData>(
+  const [localRefresh, setLocalRefresh] = useState(0);
+  const system = useAdminData<SystemData>(
     "/admin/system",
-    refresh,
+    refresh + localRefresh,
   );
-  if (loading && !data) return <AdminLoading />;
-  if (!data) return <AdminError message={error} />;
+  const backups = useAdminData<BackupSummary[]>(
+    "/admin/backups",
+    refresh + localRefresh,
+  );
+  const [label, setLabel] = useState("");
+  const [notice, setNotice] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [busyAction, setBusyAction] = useState("");
+  const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
+
+  const reload = () => setLocalRefresh((value) => value + 1);
+
+  const createNewBackup = async () => {
+    setBusyAction("create");
+    setActionError("");
+    setNotice("");
+    try {
+      const created = await request<BackupSummary>("/admin/backups", {
+        method: "POST",
+        token: hostToken(),
+        body: JSON.stringify({ label }),
+      });
+      backups.setData((rows) => [created, ...(rows || [])]);
+      setLabel("");
+      setNotice(
+        tr(
+          `Đã sao lưu ${created.keyCount} bản ghi.`,
+          `Backed up ${created.keyCount} records.`,
+        ),
+      );
+    } catch (reason) {
+      setActionError((reason as Error).message);
+    } finally {
+      setBusyAction("");
+    }
+  };
+
+  const restoreSelectedBackup = async (backup: BackupSummary) => {
+    setBusyAction(`restore:${backup.id}`);
+    setActionError("");
+    setNotice("");
+    try {
+      const result = await request<{
+        restoredKeys: number;
+        safetyBackup: BackupSummary;
+      }>(`/admin/backups/${backup.id}/restore`, {
+        method: "POST",
+        token: hostToken(),
+      });
+      setConfirmation(null);
+      setNotice(
+        tr(
+          `Đã phục hồi ${result.restoredKeys} bản ghi. Bản sao an toàn: ${result.safetyBackup.label}.`,
+          `Restored ${result.restoredKeys} records. Safety backup: ${result.safetyBackup.label}.`,
+        ),
+      );
+      reload();
+    } catch (reason) {
+      setActionError((reason as Error).message);
+    } finally {
+      setBusyAction("");
+    }
+  };
+
+  const deleteSelectedBackup = async (backup: BackupSummary) => {
+    setBusyAction(`delete:${backup.id}`);
+    setActionError("");
+    try {
+      await request<void>(`/admin/backups/${backup.id}`, {
+        method: "DELETE",
+        token: hostToken(),
+      });
+      backups.setData((rows) =>
+        (rows || []).filter((row) => row.id !== backup.id),
+      );
+      setConfirmation(null);
+      setNotice(tr("Đã xóa bản sao lưu.", "Backup deleted."));
+    } catch (reason) {
+      setActionError((reason as Error).message);
+    } finally {
+      setBusyAction("");
+    }
+  };
+
+  const downloadBackup = async (backup: BackupSummary) => {
+    setBusyAction(`download:${backup.id}`);
+    setActionError("");
+    try {
+      const response = await fetch(`/api/admin/backups/${backup.id}/download`, {
+        headers: { Authorization: `Bearer ${hostToken()}` },
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(
+          payload?.message ||
+            tr("Không thể tải bản sao lưu.", "Unable to download backup."),
+        );
+      }
+      const url = URL.createObjectURL(await response.blob());
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${backup.id}.rrbackup.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (reason) {
+      setActionError((reason as Error).message);
+    } finally {
+      setBusyAction("");
+    }
+  };
+
+  if (system.loading && !system.data) return <AdminLoading />;
+  if (!system.data) return <AdminError message={system.error} />;
+
+  const data = system.data;
   const uptimeDays = Math.floor(data.redis.uptimeSeconds / 86400);
   return (
     <>
-      <AdminError message={error} />
+      <AdminError message={system.error || backups.error || actionError} />
+      {notice && (
+        <div className="admin-success" role="status">
+          <CheckCircle2 />
+          {notice}
+        </div>
+      )}
       <section className="admin-system-grid">
         <article>
-          <Server />
+          <Shield />
           <span>
-            <small>Redis</small>
-            <b>v{data.redis.version}</b>
-            <em>{data.redis.mode || "standalone"}</em>
+            <small>{tr("Trạng thái hệ thống", "System status")}</small>
+            <b>{tr("Sẵn sàng", "Ready")}</b>
+            <em>
+              {tr(
+                "Dữ liệu đang hoạt động bình thường",
+                "Application data is operating normally",
+              )}
+            </em>
           </span>
         </article>
         <article>
           <Database />
           <span>
-            <small>{tr("Khóa namespace", "Namespace keys")}</small>
+            <small>{tr("Bản ghi đang quản lý", "Managed records")}</small>
             <b>{data.namespaceKeys.toLocaleString()}</b>
-            <em>{data.namespace}:*</em>
+            <em>{tr("Đã đồng bộ", "Synchronized")}</em>
           </span>
         </article>
         <article>
-          <Zap />
+          <Archive />
           <span>
-            <small>{tr("Bộ nhớ đang dùng", "Memory used")}</small>
-            <b>{data.redis.usedMemory || "—"}</b>
-            <em>Peak {data.redis.peakMemory || "—"}</em>
+            <small>{tr("Phiên bản đã lưu", "Saved versions")}</small>
+            <b>{backups.data ? backups.data.length.toLocaleString() : "—"}</b>
+            <em>{tr("Có thể tải xuống và phục hồi", "Ready to restore")}</em>
           </span>
         </article>
         <article>
           <Clock3 />
           <span>
-            <small>Uptime</small>
+            <small>{tr("Thời gian hoạt động", "Operating time")}</small>
             <b>
               {uptimeDays} {tr("ngày", "days")}
             </b>
-            <em>{data.redis.connectedClients} clients</em>
+            <em>{tr("Đang kết nối", "Connected")}</em>
           </span>
         </article>
       </section>
-      <section className="admin-panel">
-        <div className="admin-panel-head">
+
+      <section className="admin-panel admin-backup-panel">
+        <div className="admin-panel-head admin-backup-head">
           <div>
-            <h2>{tr("Cấu trúc dữ liệu Redis", "Redis data structures")}</h2>
+            <span className="admin-section-icon">
+              <Archive />
+            </span>
+            <div>
+              <h2>{tr("Sao lưu và phục hồi dữ liệu", "Backup and restore")}</h2>
+              <p>
+                {tr(
+                  "Tạo phiên bản dữ liệu để tải xuống hoặc quay lại khi cần.",
+                  "Create data versions to download or restore later.",
+                )}
+              </p>
+            </div>
+          </div>
+          <div className="admin-backup-create">
+            <input
+              value={label}
+              maxLength={80}
+              onChange={(event) => setLabel(event.target.value)}
+              placeholder={tr(
+                "Tên bản sao, ví dụ: Trước khi demo",
+                "Backup name, e.g. Before demo",
+              )}
+            />
+            <button
+              className="admin-button primary"
+              disabled={Boolean(busyAction)}
+              onClick={() => void createNewBackup()}
+            >
+              {busyAction === "create" ? (
+                <RefreshCw className="spin" />
+              ) : (
+                <Archive />
+              )}
+              {tr("Tạo bản sao", "Create backup")}
+            </button>
+          </div>
+        </div>
+        <div className="admin-backup-note">
+          <Shield />
+          <div>
+            <b>{tr("Phục hồi có lớp an toàn", "Safe restore")}</b>
             <p>
               {tr(
-                `Namespace ${data.namespace}:* được kiểm tra trực tiếp`,
-                `Live inspection of ${data.namespace}:*`,
+                "Trước mỗi lần phục hồi, RankRush tự tạo một bản sao dữ liệu hiện tại. Nếu restore lỗi, hệ thống tự hoàn tác.",
+                "Before every restore, RankRush creates a safety backup. If restore fails, the current data is rolled back automatically.",
               )}
             </p>
           </div>
-          <time>{dateTime(data.checkedAt, locale)}</time>
         </div>
-        <div className="admin-type-grid">
-          {Object.entries(data.typeCounts)
-            .sort((a, b) => b[1] - a[1])
-            .map(([type, count]) => (
-              <div key={type}>
-                <span>
-                  <b>{type.toUpperCase()}</b>
-                  <small>{count} keys</small>
-                </span>
-                <progress max={Math.max(1, data.namespaceKeys)} value={count} />
-              </div>
+        {backups.loading && !backups.data ? (
+          <div className="admin-backup-loading">
+            {Array.from({ length: 3 }, (_, index) => (
+              <span key={index} />
             ))}
-        </div>
-        <div className="admin-system-foot">
-          <span>
-            {tr("Tổng khóa toàn database", "Total database keys")}
-            <b>{data.totalDatabaseKeys}</b>
-          </span>
-          <span>
-            {tr("Lệnh đã xử lý", "Commands processed")}
-            <b>{data.redis.totalCommands.toLocaleString()}</b>
-          </span>
-        </div>
+          </div>
+        ) : backups.data?.length ? (
+          <div className="admin-backup-list">
+            {backups.data.map((backup) => (
+              <article key={backup.id}>
+                <span className="admin-backup-icon">
+                  <Database />
+                </span>
+                <div className="admin-backup-info">
+                  <div>
+                    <b>{backup.label}</b>
+                    {backup.reason === "PRE_RESTORE" && (
+                      <span className="admin-badge safety">
+                        {tr("AN TOÀN TỰ ĐỘNG", "AUTO SAFETY")}
+                      </span>
+                    )}
+                  </div>
+                  <small>
+                    {dateTime(backup.createdAt, locale)} · {backup.keyCount}{" "}
+                    {tr("bản ghi", "records")} ·{" "}
+                    {formatBytes(backup.sizeBytes, locale)}
+                  </small>
+                </div>
+                <div className="admin-backup-actions">
+                  <button
+                    title={tr("Tải xuống", "Download")}
+                    disabled={Boolean(busyAction)}
+                    onClick={() => void downloadBackup(backup)}
+                  >
+                    {busyAction === `download:${backup.id}` ? (
+                      <RefreshCw className="spin" />
+                    ) : (
+                      <Download />
+                    )}
+                  </button>
+                  <button
+                    className="restore"
+                    title={tr("Phục hồi phiên bản này", "Restore this version")}
+                    disabled={Boolean(busyAction)}
+                    onClick={() =>
+                      setConfirmation({
+                        title: tr(
+                          "Phục hồi phiên bản dữ liệu?",
+                          "Restore this data version?",
+                        ),
+                        message: tr(
+                          `Toàn bộ dữ liệu ứng dụng sẽ quay về phiên bản “${backup.label}”. Hệ thống sẽ tự sao lưu trạng thái hiện tại trước khi thực hiện.`,
+                          `All application data will return to “${backup.label}”. The current state will be backed up automatically first.`,
+                        ),
+                        confirmLabel: tr("Phục hồi", "Restore"),
+                        tone: "danger",
+                        run: () => restoreSelectedBackup(backup),
+                      })
+                    }
+                  >
+                    <RotateCcw />
+                  </button>
+                  <button
+                    className="danger"
+                    title={tr("Xóa bản sao", "Delete backup")}
+                    disabled={Boolean(busyAction)}
+                    onClick={() =>
+                      setConfirmation({
+                        title: tr("Xóa bản sao lưu?", "Delete backup?"),
+                        message: tr(
+                          `Bản sao “${backup.label}” sẽ bị xóa khỏi máy chủ và không thể tải lại.`,
+                          `“${backup.label}” will be removed from the server and cannot be downloaded again.`,
+                        ),
+                        confirmLabel: tr("Xóa", "Delete"),
+                        tone: "danger",
+                        run: () => deleteSelectedBackup(backup),
+                      })
+                    }
+                  >
+                    <Trash2 />
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="admin-empty admin-backup-empty">
+            <Archive />
+            <div>
+              <b>{tr("Chưa có bản sao lưu", "No backups yet")}</b>
+              <p>
+                {tr(
+                  "Hãy tạo bản sao đầu tiên trước khi thay đổi dữ liệu quan trọng.",
+                  "Create your first backup before changing important data.",
+                )}
+              </p>
+            </div>
+          </div>
+        )}
       </section>
+      <AdminConfirm
+        value={confirmation}
+        busy={Boolean(busyAction)}
+        onClose={() => !busyAction && setConfirmation(null)}
+      />
     </>
   );
 }
@@ -1062,8 +1861,8 @@ function AdminAssistant() {
                 setForm({ ...form, subject: event.target.value })
               }
               placeholder={tr(
-                "Ví dụ: Redis Sorted Set",
-                "Example: Redis Sorted Sets",
+                "Ví dụ: Lịch sử Việt Nam",
+                "Example: Vietnamese history",
               )}
             />
           </label>
@@ -1206,8 +2005,7 @@ function AdminAssistant() {
             <b>{tr("Đã tạo quiz nháp thành công", "Draft quiz created")}</b>
             <p>
               {result.quiz.title} · {result.questionCount}{" "}
-              {tr("câu", "questions")} · {result.provider}
-              {result.warning ? ` · ${result.warning}` : ""}
+              {tr("câu hỏi", "questions")}
             </p>
           </div>
           <button
@@ -1256,15 +2054,15 @@ const pageMeta = (section: string, tr: (vi: string, en: string) => string) =>
     system: [
       tr("Dữ liệu hệ thống", "System data"),
       tr(
-        "Trạng thái Redis và cấu trúc dữ liệu",
-        "Redis health and data structures",
+        "Trạng thái, sao lưu và phục hồi phiên bản dữ liệu",
+        "Status, backup and data-version restore",
       ),
     ],
     assistant: [
       tr("Trợ lý tạo câu hỏi", "Question assistant"),
       tr(
-        "Tạo quiz nháp bằng Ollama hoặc bộ sinh cục bộ",
-        "Create draft quizzes with Ollama or local fallback",
+        "Tạo quiz nháp tự động và kiểm tra trước khi sử dụng",
+        "Create draft quizzes automatically and review before use",
       ),
     ],
   })[section] || ["Admin", "RankRush"];
@@ -1305,7 +2103,51 @@ export default function AdminPage() {
             <AdminAppearance />
             <button
               className="admin-button secondary"
-              onClick={() => setRefresh((value) => value + 1)}
+              onClick={() => {
+                if ((window as any).__refreshing) return;
+                (window as any).__refreshing = true;
+                const bd = document.createElement("div");
+                bd.className = "confirm-backdrop";
+                bd.style.cssText = "position:fixed;z-index:9999";
+                bd.innerHTML =
+                  '<section class="confirm-dialog" role="alertdialog" aria-modal="true"><div class="confirm-dialog-heading"><span class="confirm-dialog-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></span><div><span class="eyebrow">' +
+                  tr("Xác nhận", "Confirmation") +
+                  "</span><h2>" +
+                  tr("Làm mới dữ liệu?", "Refresh data?") +
+                  "</h2></div></div><p>" +
+                  tr(
+                    "Thao tác này sẽ tải lại toàn bộ dữ liệu quản trị.",
+                    "This will reload all admin data.",
+                  ) +
+                  '</p><div class="confirm-dialog-actions"><button class="button button-secondary" id="rfc-no">' +
+                  tr("Kh\u00f4ng", "No") +
+                  '</button><button class="button button-primary" id="rfc-yes">' +
+                  tr("C\u00f3", "Yes") +
+                  "</button></div></section>";
+                document.body.appendChild(bd);
+                const clean = () => {
+                  bd.remove();
+                  (window as any).__refreshing = false;
+                };
+                bd.querySelector("#rfc-no")?.addEventListener("click", clean);
+                bd.querySelector("#rfc-yes")?.addEventListener("click", () => {
+                  clean();
+                  setRefresh((v) => v + 1);
+                  setTimeout(() => {
+                    const toast = document.createElement("div");
+                    toast.className = "toast visible";
+                    toast.style.cssText =
+                      "position:fixed;bottom:30px;left:50%;transform:translateX(-50%);z-index:9999";
+                    toast.innerHTML =
+                      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> ' +
+                      tr("Đã làm mới dữ liệu.", "Data refreshed.");
+                    document.body.appendChild(toast);
+                    setTimeout(() => {
+                      toast.remove();
+                    }, 2500);
+                  }, 300);
+                });
+              }}
             >
               <RefreshCw />
               {tr("Làm mới", "Refresh")}

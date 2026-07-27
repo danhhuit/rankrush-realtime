@@ -196,6 +196,7 @@ type PreferencesValue = {
   locale: Locale;
   setLocale: (locale: Locale) => void;
   theme: Theme;
+  toggleTheme: () => void;
   themePreference: ThemePreference;
   setThemePreference: (theme: ThemePreference) => void;
   t: (key: MessageKey) => string;
@@ -275,6 +276,8 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
       locale,
       setLocale,
       theme,
+      toggleTheme: () =>
+        setThemePreference(theme === "dark" ? "light" : "dark"),
       themePreference,
       setThemePreference,
       t: (key) => messages[locale][key],

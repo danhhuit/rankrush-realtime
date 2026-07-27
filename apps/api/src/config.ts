@@ -18,6 +18,8 @@ const schema = z.object({
   WEB_PORT: z.coerce.number().int().positive().default(5173),
   REDIS_URL: z.string().default("redis://localhost:6379"),
   REDIS_PREFIX: z.string().default("rankrush"),
+  BACKUP_DIR: z.string().default(""),
+  BACKUP_MAX_KEYS: z.coerce.number().int().positive().default(50000),
   JWT_SECRET: z.string().min(16).default("rankrush-change-this-secret"),
   SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(604800),
   JOIN_CODE_TTL_SECONDS: z.coerce.number().int().positive().default(86400),
