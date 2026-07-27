@@ -26,6 +26,13 @@ import {
   signPlayer,
   verifyToken,
 } from "./auth.js";
+import {
+  createBackup,
+  deleteBackup,
+  getBackupDownload,
+  listBackups,
+  restoreBackup,
+} from "./backup-service.js";
 import { config } from "./config.js";
 import {
   importQuizQuestionsFromCsv,
@@ -115,10 +122,13 @@ const allowWebOrigin = (
   if (!origin || isAllowedWebOrigin(origin)) callback(null, true);
   else
     callback(
-      Object.assign(new Error("Origin khÃ´ng Ä‘Æ°á»£c phÃ©p truy cáº­p RankRush."), {
-        status: 403,
-        code: "CORS_ORIGIN_DENIED",
-      }),
+      Object.assign(
+        new Error("Origin khÃ´ng Ä‘Æ°á»£c phÃ©p truy cáº­p RankRush."),
+        {
+          status: 403,
+          code: "CORS_ORIGIN_DENIED",
+        },
+      ),
     );
 };
 const io = new Server(server, {
@@ -189,10 +199,13 @@ async function hostableQuiz(req: Request, id: string) {
     });
   const isAdmin = req.auth?.kind === "host" && req.auth.role === "ADMIN";
   if (quiz.ownerId !== authId(req) && quiz.status !== "PUBLISHED" && !isAdmin)
-    throw Object.assign(new Error("Quiz nÃ y chÆ°a Ä‘Æ°á»£c cÃ´ng khai Ä‘á»ƒ tá»• chá»©c."), {
-      status: 403,
-      code: "FORBIDDEN",
-    });
+    throw Object.assign(
+      new Error("Quiz nÃ y chÆ°a Ä‘Æ°á»£c cÃ´ng khai Ä‘á»ƒ tá»• chá»©c."),
+      {
+        status: 403,
+        code: "FORBIDDEN",
+      },
+    );
   return quiz;
 }
 async function ownedSession(req: Request, id: string) {
@@ -637,10 +650,13 @@ app.post(
         code: "EMAIL_EXISTS",
       });
     if (usernameUser)
-      throw Object.assign(new Error("TÃªn Ä‘Äƒng nháº­p Ä‘Ã£ Ä‘Æ°á»£c sá»­ dá»¥ng."), {
-        status: 409,
-        code: "USERNAME_EXISTS",
-      });
+      throw Object.assign(
+        new Error("TÃªn Ä‘Äƒng nháº­p Ä‘Ã£ Ä‘Æ°á»£c sá»­ dá»¥ng."),
+        {
+          status: 409,
+          code: "USERNAME_EXISTS",
+        },
+      );
     const result = await issueEmailCode(email, "register");
     res.json({
       ...result,
@@ -669,7 +685,9 @@ app.post(
       if (attempts >= 5)
         await redis.del(keys.emailVerification(email), attemptsKey);
       throw Object.assign(
-        new Error("MÃ£ xÃ¡c nháº­n email khÃ´ng Ä‘Ãºng hoáº·c Ä‘Ã£ háº¿t háº¡n."),
+        new Error(
+          "MÃ£ xÃ¡c nháº­n email khÃ´ng Ä‘Ãºng hoáº·c Ä‘Ã£ háº¿t háº¡n.",
+        ),
         { status: 400, code: "EMAIL_CODE_INVALID" },
       );
     }
@@ -679,7 +697,6 @@ app.post(
       username: data.username,
       email,
       passwordHash: await bcrypt.hash(data.password, 12),
-      rawPassword: data.password,
       role: "HOST",
       status: "ACTIVE",
       createdAt: new Date().toISOString(),
@@ -719,7 +736,9 @@ app.post(
     const attempts = Number((await redis.get(attemptsKey)) || 0);
     if (attempts >= 10)
       throw Object.assign(
-        new Error("QuÃ¡ nhiá»u láº§n Ä‘Äƒng nháº­p sai. Vui lÃ²ng thá»­ láº¡i sau 15 phÃºt."),
+        new Error(
+          "QuÃ¡ nhiá»u láº§n Ä‘Äƒng nháº­p sai. Vui lÃ²ng thá»­ láº¡i sau 15 phÃºt.",
+        ),
         { status: 429, code: "LOGIN_RATE_LIMITED" },
       );
     const user = identifier.includes("@")
@@ -729,7 +748,9 @@ app.post(
       const failed = await redis.incr(attemptsKey);
       if (failed === 1) await redis.expire(attemptsKey, 15 * 60);
       throw Object.assign(
-        new Error("TÃªn Ä‘Äƒng nháº­p/email hoáº·c máº­t kháº©u khÃ´ng Ä‘Ãºng."),
+        new Error(
+          "TÃªn Ä‘Äƒng nháº­p/email hoáº·c máº­t kháº©u khÃ´ng Ä‘Ãºng.",
+        ),
         {
           status: 401,
           code: "LOGIN_FAILED",
@@ -738,7 +759,9 @@ app.post(
     }
     if (user.status === "SUSPENDED")
       throw Object.assign(
-        new Error("TÃ i khoáº£n Ä‘Ã£ bá»‹ táº¡m khÃ³a. Vui lÃ²ng liÃªn há»‡ quáº£n trá»‹ viÃªn."),
+        new Error(
+          "TÃ i khoáº£n Ä‘Ã£ bá»‹ táº¡m khÃ³a. Vui lÃ²ng liÃªn há»‡ quáº£n trá»‹ viÃªn.",
+        ),
         { status: 403, code: "ACCOUNT_SUSPENDED" },
       );
     await redis.del(attemptsKey);
@@ -800,17 +823,21 @@ app.post(
         await redis.expire(attemptsKey, config.RESET_CODE_TTL_SECONDS);
       if (attempts >= 5)
         await redis.del(keys.passwordReset(email), attemptsKey);
-      throw Object.assign(new Error("MÃ£ Ä‘áº·t láº¡i khÃ´ng Ä‘Ãºng hoáº·c Ä‘Ã£ háº¿t háº¡n."), {
-        status: 400,
-        code: "RESET_CODE_INVALID",
-      });
+      throw Object.assign(
+        new Error("MÃ£ Ä‘áº·t láº¡i khÃ´ng Ä‘Ãºng hoáº·c Ä‘Ã£ háº¿t háº¡n."),
+        {
+          status: 400,
+          code: "RESET_CODE_INVALID",
+        },
+      );
     }
+    const userKey = keys.user(user.id);
     await redis
       .multi()
-      .hset(keys.user(user.id), {
+      .hset(userKey, {
         passwordHash: await bcrypt.hash(data.password, 12),
-        rawPassword: data.password,
       })
+      .hdel(userKey, "rawPassword")
       .del(keys.passwordReset(email))
       .del(keys.emailCodeAttempts("reset", email))
       .exec();
@@ -869,16 +896,22 @@ app.put(
       (!data.currentPassword ||
         !(await bcrypt.compare(data.currentPassword, current.passwordHash)))
     )
-      throw Object.assign(new Error("Máº­t kháº©u hiá»‡n táº¡i khÃ´ng Ä‘Ãºng."), {
-        status: 400,
-        code: "CURRENT_PASSWORD_INVALID",
-      });
+      throw Object.assign(
+        new Error("Máº­t kháº©u hiá»‡n táº¡i khÃ´ng Ä‘Ãºng."),
+        {
+          status: 400,
+          code: "CURRENT_PASSWORD_INVALID",
+        },
+      );
     const usernameOwner = await redis.get(keys.userUsername(data.username));
     if (usernameOwner && usernameOwner !== current.id)
-      throw Object.assign(new Error("TÃªn Ä‘Äƒng nháº­p Ä‘Ã£ Ä‘Æ°á»£c sá»­ dá»¥ng."), {
-        status: 409,
-        code: "USERNAME_EXISTS",
-      });
+      throw Object.assign(
+        new Error("TÃªn Ä‘Äƒng nháº­p Ä‘Ã£ Ä‘Æ°á»£c sá»­ dá»¥ng."),
+        {
+          status: 409,
+          code: "USERNAME_EXISTS",
+        },
+      );
     const updated: User = {
       ...current,
       displayName: data.displayName,
@@ -886,14 +919,13 @@ app.put(
       passwordHash: data.password
         ? await bcrypt.hash(data.password, 12)
         : current.passwordHash,
-      rawPassword: data.password ? data.password : current.rawPassword,
     };
     const tx = redis.multi().hset(keys.user(updated.id), {
       displayName: updated.displayName,
       username: updated.username || "",
       passwordHash: updated.passwordHash,
-      rawPassword: updated.rawPassword,
     });
+    if (data.password) tx.hdel(keys.user(updated.id), "rawPassword");
     if (current.username && current.username !== updated.username)
       tx.del(keys.userUsername(current.username));
     if (updated.username)
@@ -912,10 +944,13 @@ app.put(
 async function currentAdmin(req: Request) {
   const user = await getUser(authId(req));
   if (!user || user.role !== "ADMIN" || user.status === "SUSPENDED")
-    throw Object.assign(new Error("TÃ i khoáº£n khÃ´ng cÃ²n quyá»n quáº£n trá»‹ viÃªn."), {
-      status: 403,
-      code: "ADMIN_REQUIRED",
-    });
+    throw Object.assign(
+      new Error("TÃ i khoáº£n khÃ´ng cÃ²n quyá»n quáº£n trá»‹ viÃªn."),
+      {
+        status: 403,
+        code: "ADMIN_REQUIRED",
+      },
+    );
   return user;
 }
 
@@ -928,7 +963,6 @@ function publicAdminUser(user: User) {
     role: user.role,
     status: user.status || "ACTIVE",
     createdAt: user.createdAt,
-    rawPassword: user.rawPassword || "",
   };
 }
 
@@ -1074,15 +1108,21 @@ app.post(
     ]);
 
     if (existingEmail)
-      throw Object.assign(new Error("Äá»‹a chá»‰ email Ä‘Ã£ Ä‘Æ°á»£c sá»­ dá»¥ng."), {
-        status: 409,
-        code: "EMAIL_EXISTS",
-      });
+      throw Object.assign(
+        new Error("Äá»‹a chá»‰ email Ä‘Ã£ Ä‘Æ°á»£c sá»­ dá»¥ng."),
+        {
+          status: 409,
+          code: "EMAIL_EXISTS",
+        },
+      );
     if (existingUsername)
-      throw Object.assign(new Error("TÃªn Ä‘Äƒng nháº­p Ä‘Ã£ Ä‘Æ°á»£c sá»­ dá»¥ng."), {
-        status: 409,
-        code: "USERNAME_EXISTS",
-      });
+      throw Object.assign(
+        new Error("TÃªn Ä‘Äƒng nháº­p Ä‘Ã£ Ä‘Æ°á»£c sá»­ dá»¥ng."),
+        {
+          status: 409,
+          code: "USERNAME_EXISTS",
+        },
+      );
 
     const user: User = {
       id: customAlphabet(
@@ -1093,7 +1133,6 @@ app.post(
       username: data.username,
       email: data.email,
       passwordHash: await bcrypt.hash(data.password, 12),
-      rawPassword: data.password,
       role: data.role,
       status: "ACTIVE",
       createdAt: new Date().toISOString(),
@@ -1189,7 +1228,9 @@ app.patch(
       (nextRole !== "ADMIN" || nextStatus !== "ACTIVE")
     )
       throw Object.assign(
-        new Error("Báº¡n khÃ´ng thá»ƒ tá»± háº¡ quyá»n hoáº·c khÃ³a tÃ i khoáº£n cá»§a mÃ¬nh."),
+        new Error(
+          "Báº¡n khÃ´ng thá»ƒ tá»± háº¡ quyá»n hoáº·c khÃ³a tÃ i khoáº£n cá»§a mÃ¬nh.",
+        ),
         { status: 409, code: "ADMIN_SELF_PROTECTED" },
       );
     if (
@@ -1203,7 +1244,9 @@ app.patch(
       );
       if (activeAdmins.length <= 1)
         throw Object.assign(
-          new Error("Há»‡ thá»‘ng pháº£i cÃ²n Ã­t nháº¥t má»™t quáº£n trá»‹ viÃªn hoáº¡t Ä‘á»™ng."),
+          new Error(
+            "Há»‡ thá»‘ng pháº£i cÃ²n Ã­t nháº¥t má»™t quáº£n trá»‹ viÃªn hoáº¡t Ä‘á»™ng.",
+          ),
           { status: 409, code: "LAST_ADMIN_PROTECTED" },
         );
     }
@@ -1268,9 +1311,11 @@ app.put(
 
     const passwordHash = await bcrypt.hash(data.newPassword, 12);
 
+    const userKey = keys.user(target.id);
     await redis
       .multi()
-      .hset(keys.user(target.id), { passwordHash, rawPassword: data.newPassword })
+      .hset(userKey, { passwordHash })
+      .hdel(userKey, "rawPassword")
       .xadd(
         keys.adminEvents,
         "MAXLEN",
@@ -1409,6 +1454,118 @@ app.get(
   }),
 );
 
+app.get(
+  "/api/admin/backups",
+  requireAdmin,
+  asyncRoute(async (req, res) => {
+    await currentAdmin(req);
+    res.json(await listBackups());
+  }),
+);
+
+app.post(
+  "/api/admin/backups",
+  requireAdmin,
+  asyncRoute(async (req, res) => {
+    const admin = await currentAdmin(req);
+    const { label } = z
+      .object({ label: z.string().trim().max(80).default("") })
+      .parse(req.body || {});
+    const backup = await createBackup(label || "Bản sao thủ công");
+    await redis.xadd(
+      keys.adminEvents,
+      "MAXLEN",
+      "~",
+      2000,
+      "*",
+      "type",
+      "BACKUP_CREATED",
+      "adminId",
+      admin.id,
+      "backupId",
+      backup.id,
+      "keyCount",
+      String(backup.keyCount),
+      "at",
+      new Date().toISOString(),
+    );
+    res.status(201).json(backup);
+  }),
+);
+
+app.get(
+  "/api/admin/backups/:id/download",
+  requireAdmin,
+  asyncRoute(async (req, res) => {
+    await currentAdmin(req);
+    const download = await getBackupDownload(req.params.id);
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${download.filename}"`,
+    );
+    res.sendFile(download.path);
+  }),
+);
+
+app.post(
+  "/api/admin/backups/:id/restore",
+  requireAdmin,
+  asyncRoute(async (req, res) => {
+    const admin = await currentAdmin(req);
+    const result = await restoreBackup(req.params.id);
+    await redis.xadd(
+      keys.adminEvents,
+      "MAXLEN",
+      "~",
+      2000,
+      "*",
+      "type",
+      "BACKUP_RESTORED",
+      "adminId",
+      admin.id,
+      "backupId",
+      result.backup.id,
+      "safetyBackupId",
+      result.safetyBackup.id,
+      "keyCount",
+      String(result.restoredKeys),
+      "at",
+      result.restoredAt,
+    );
+    io.emit("system:restored", {
+      at: result.restoredAt,
+      backupId: result.backup.id,
+    });
+    res.json(result);
+  }),
+);
+
+app.delete(
+  "/api/admin/backups/:id",
+  requireAdmin,
+  asyncRoute(async (req, res) => {
+    const admin = await currentAdmin(req);
+    await deleteBackup(req.params.id);
+    await redis.xadd(
+      keys.adminEvents,
+      "MAXLEN",
+      "~",
+      2000,
+      "*",
+      "type",
+      "BACKUP_DELETED",
+      "adminId",
+      admin.id,
+      "backupId",
+      req.params.id,
+      "at",
+      new Date().toISOString(),
+    );
+    res.status(204).end();
+  }),
+);
+
 const quizInput = z.object({
   title: z.string().trim().min(3).max(120),
   description: z.string().max(500).default(""),
@@ -1507,9 +1664,12 @@ app.post(
       !question ||
       question.quizId !== quiz.id
     )
-      throw Object.assign(new Error("KhÃ´ng tÃ¬m tháº¥y cÃ¢u há»i luyá»‡n táº­p."), {
-        status: 404,
-      });
+      throw Object.assign(
+        new Error("KhÃ´ng tÃ¬m tháº¥y cÃ¢u há»i luyá»‡n táº­p."),
+        {
+          status: 404,
+        },
+      );
     const { answer } = z
       .object({ answer: z.string().max(300) })
       .parse(req.body);
@@ -1539,7 +1699,9 @@ app.post(
     const data = quizInput.parse(req.body);
     if (data.status === "PUBLISHED")
       throw Object.assign(
-        new Error("HÃ£y táº¡o vÃ  kiá»ƒm tra cÃ¢u há»i trÆ°á»›c khi xuáº¥t báº£n quiz."),
+        new Error(
+          "HÃ£y táº¡o vÃ  kiá»ƒm tra cÃ¢u há»i trÆ°á»›c khi xuáº¥t báº£n quiz.",
+        ),
         { status: 400, code: "QUIZ_INVALID" },
       );
     const now = new Date().toISOString();
@@ -1639,7 +1801,9 @@ app.post(
       .parse(req.body);
     if (!input.subject && !input.context && !input.sourceText && !req.file)
       throw Object.assign(
-        new Error("HÃ£y nháº­p chá»§ Ä‘á», ná»™i dung tham kháº£o hoáº·c táº£i lÃªn má»™t PDF."),
+        new Error(
+          "HÃ£y nháº­p chá»§ Ä‘á», ná»™i dung tham kháº£o hoáº·c táº£i lÃªn má»™t PDF.",
+        ),
         {
           status: 400,
           code: "GENERATOR_SOURCE_REQUIRED",
@@ -1658,7 +1822,9 @@ app.post(
       }
       if (sourceText.trim().length < 80)
         throw Object.assign(
-          new Error("PDF khÃ´ng cÃ³ Ä‘á»§ vÄƒn báº£n cÃ³ thá»ƒ Ä‘á»c Ä‘á»ƒ táº¡o cÃ¢u há»i."),
+          new Error(
+            "PDF khÃ´ng cÃ³ Ä‘á»§ vÄƒn báº£n cÃ³ thá»ƒ Ä‘á»c Ä‘á»ƒ táº¡o cÃ¢u há»i.",
+          ),
           { status: 400, code: "PDF_TEXT_EMPTY" },
         );
     } else if (req.file) {
@@ -1779,7 +1945,8 @@ const questionInput = questionBaseInput.superRefine((question, context) => {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["acceptedAnswers"],
-        message: "CÃ¢u há»i vÄƒn báº£n pháº£i cÃ³ Ã­t nháº¥t má»™t Ä‘Ã¡p Ã¡n Ä‘Æ°á»£c cháº¥p nháº­n.",
+        message:
+          "CÃ¢u há»i vÄƒn báº£n pháº£i cÃ³ Ã­t nháº¥t má»™t Ä‘Ã¡p Ã¡n Ä‘Æ°á»£c cháº¥p nháº­n.",
       });
     return;
   }
@@ -1806,16 +1973,21 @@ const questionInput = questionBaseInput.superRefine((question, context) => {
 async function assertQuizPublishable(quizId: string) {
   const questions = await listQuestions(quizId);
   if (!questions.length)
-    throw Object.assign(new Error("Quiz pháº£i cÃ³ Ã­t nháº¥t má»™t cÃ¢u há»i."), {
-      status: 400,
-      code: "QUIZ_EMPTY",
-    });
+    throw Object.assign(
+      new Error("Quiz pháº£i cÃ³ Ã­t nháº¥t má»™t cÃ¢u há»i."),
+      {
+        status: 400,
+        code: "QUIZ_EMPTY",
+      },
+    );
   const invalid = questions.find(
     (question) => !questionInput.safeParse(question).success,
   );
   if (invalid)
     throw Object.assign(
-      new Error(`CÃ¢u há»i â€œ${invalid.prompt}â€ chÆ°a cÃ³ cáº¥u hÃ¬nh Ä‘Ã¡p Ã¡n há»£p lá»‡.`),
+      new Error(
+        `CÃ¢u há»i â€œ${invalid.prompt}â€ chÆ°a cÃ³ cáº¥u hÃ¬nh Ä‘Ã¡p Ã¡n há»£p lá»‡.`,
+      ),
       { status: 400, code: "QUIZ_INVALID" },
     );
 }
@@ -1893,10 +2065,13 @@ app.post(
     await assertQuizPublishable(quiz.id);
     const questions = await listQuestions(quiz.id);
     if (!questions.length)
-      throw Object.assign(new Error("Quiz pháº£i cÃ³ Ã­t nháº¥t má»™t cÃ¢u há»i."), {
-        status: 400,
-        code: "QUIZ_EMPTY",
-      });
+      throw Object.assign(
+        new Error("Quiz pháº£i cÃ³ Ã­t nháº¥t má»™t cÃ¢u há»i."),
+        {
+          status: 400,
+          code: "QUIZ_EMPTY",
+        },
+      );
     const now = new Date().toISOString();
     const s = await createSession({
       id: nanoid(12),
@@ -1958,7 +2133,9 @@ app.patch(
     const session = await ownedSession(req, req.params.id);
     if (session.state !== "LOBBY")
       throw Object.assign(
-        new Error("Chá»‰ cÃ³ thá»ƒ Ä‘á»•i thiáº¿t láº­p khi phÃ²ng Ä‘ang chá»."),
+        new Error(
+          "Chá»‰ cÃ³ thá»ƒ Ä‘á»•i thiáº¿t láº­p khi phÃ²ng Ä‘ang chá».",
+        ),
         { status: 409, code: "SETTINGS_LOCKED" },
       );
     const settings = settingsSchema.parse(req.body);
@@ -1973,10 +2150,13 @@ app.get(
   asyncRoute(async (req, res) => {
     const s = await getSessionByPin(req.params.pin);
     if (!s)
-      throw Object.assign(new Error("PIN khÃ´ng tá»“n táº¡i hoáº·c Ä‘Ã£ háº¿t háº¡n."), {
-        status: 404,
-        code: "PIN_NOT_FOUND",
-      });
+      throw Object.assign(
+        new Error("PIN khÃ´ng tá»“n táº¡i hoáº·c Ä‘Ã£ háº¿t háº¡n."),
+        {
+          status: 404,
+          code: "PIN_NOT_FOUND",
+        },
+      );
     const quiz = await getQuiz(s.quizId);
     res.json({
       session: { id: s.id, pin: s.pin, state: s.state, settings: s.settings },
@@ -2019,13 +2199,18 @@ app.get(
       }
     } catch {}
     if (viewer === "public")
-      throw Object.assign(new Error("Vui lÃ²ng Ä‘Äƒng nháº­p Ä‘á»ƒ xem phiÃªn chÆ¡i."), {
-        status: 401,
-        code: "UNAUTHORIZED",
-      });
+      throw Object.assign(
+        new Error("Vui lÃ²ng Ä‘Äƒng nháº­p Ä‘á»ƒ xem phiÃªn chÆ¡i."),
+        {
+          status: 401,
+          code: "UNAUTHORIZED",
+        },
+      );
     const snap = await gameSnapshot(req.params.id, pid, viewer);
     if (!snap)
-      throw Object.assign(new Error("KhÃ´ng tÃ¬m tháº¥y phiÃªn."), { status: 404 });
+      throw Object.assign(new Error("KhÃ´ng tÃ¬m tháº¥y phiÃªn."), {
+        status: 404,
+      });
     if (
       [
         "GAME_COUNTDOWN",
@@ -2054,10 +2239,13 @@ app.post(
       .parse(req.body);
     const s = await getSessionByPin(data.pin);
     if (!s)
-      throw Object.assign(new Error("PIN khÃ´ng tá»“n táº¡i hoáº·c Ä‘Ã£ háº¿t háº¡n."), {
-        status: 404,
-        code: "PIN_NOT_FOUND",
-      });
+      throw Object.assign(
+        new Error("PIN khÃ´ng tá»“n táº¡i hoáº·c Ä‘Ã£ háº¿t háº¡n."),
+        {
+          status: 404,
+          code: "PIN_NOT_FOUND",
+        },
+      );
     if (
       req.auth?.kind === "host" &&
       (req.auth.sub === s.hostId || req.auth.role === "ADMIN")
@@ -2080,14 +2268,20 @@ app.post(
   asyncRoute(async (req, res) => {
     const s = await ownedSession(req, req.params.id);
     if (s.state !== "LOBBY")
-      throw Object.assign(new Error("Chá»‰ cÃ³ thá»ƒ báº¯t Ä‘áº§u tá»« lobby."), {
-        status: 409,
-      });
+      throw Object.assign(
+        new Error("Chá»‰ cÃ³ thá»ƒ báº¯t Ä‘áº§u tá»« lobby."),
+        {
+          status: 409,
+        },
+      );
     if ((await redis.scard(keys.sessionPlayers(s.id))) === 0)
-      throw Object.assign(new Error("Cáº§n Ã­t nháº¥t má»™t ngÆ°á»i chÆ¡i Ä‘á»ƒ báº¯t Ä‘áº§u."), {
-        status: 409,
-        code: "SESSION_EMPTY",
-      });
+      throw Object.assign(
+        new Error("Cáº§n Ã­t nháº¥t má»™t ngÆ°á»i chÆ¡i Ä‘á»ƒ báº¯t Ä‘áº§u."),
+        {
+          status: 409,
+          code: "SESSION_EMPTY",
+        },
+      );
     const now = new Date().toISOString();
     const updated = await updateSession(s.id, {
       state: "GAME_COUNTDOWN",
@@ -2107,7 +2301,9 @@ app.post(
     const s = await ownedSession(req, req.params.id);
     if (s.state !== "QUESTION_RESULT")
       throw Object.assign(
-        new Error("ÄÃ¡p Ã¡n Ä‘Æ°á»£c cÃ´ng bá»‘ tá»± Ä‘á»™ng; chÆ°a thá»ƒ chuyá»ƒn cÃ¢u."),
+        new Error(
+          "ÄÃ¡p Ã¡n Ä‘Æ°á»£c cÃ´ng bá»‘ tá»± Ä‘á»™ng; chÆ°a thá»ƒ chuyá»ƒn cÃ¢u.",
+        ),
         {
           status: 409,
           code: "AUTO_FLOW_ACTIVE",
@@ -2126,9 +2322,12 @@ app.post(
         s.state,
       )
     )
-      throw Object.assign(new Error("KhÃ´ng thá»ƒ bá» qua cÃ¢u há»i lÃºc nÃ y."), {
-        status: 409,
-      });
+      throw Object.assign(
+        new Error("KhÃ´ng thá»ƒ bá» qua cÃ¢u há»i lÃºc nÃ y."),
+        {
+          status: 409,
+        },
+      );
     res.json(await moveToNextQuestion(s.id));
   }),
 );
@@ -2143,9 +2342,12 @@ app.post(
         !s ||
         !["QUESTION_PREVIEW", "RUNNING", "QUESTION_RESULT"].includes(s.state)
       )
-        throw Object.assign(new Error("PhiÃªn khÃ´ng thá»ƒ táº¡m dá»«ng lÃºc nÃ y."), {
-          status: 409,
-        });
+        throw Object.assign(
+          new Error("PhiÃªn khÃ´ng thá»ƒ táº¡m dá»«ng lÃºc nÃ y."),
+          {
+            status: 409,
+          },
+        );
       const questions = await sessionQuestions(s);
       const q = questions[s.currentQuestionIndex];
       if (!q)
@@ -2243,10 +2445,13 @@ app.post(
   asyncRoute(async (req, res) => {
     const session = await ownedSession(req, req.params.id);
     if (session.state !== "LOBBY")
-      throw Object.assign(new Error("Chá»‰ cÃ³ thá»ƒ há»§y phÃ²ng khi Ä‘ang á»Ÿ lobby."), {
-        status: 409,
-        code: "SESSION_NOT_CANCELLABLE",
-      });
+      throw Object.assign(
+        new Error("Chá»‰ cÃ³ thá»ƒ há»§y phÃ²ng khi Ä‘ang á»Ÿ lobby."),
+        {
+          status: 409,
+          code: "SESSION_NOT_CANCELLABLE",
+        },
+      );
     const updated = await updateSession(session.id, {
       state: "CANCELLED",
       endedAt: new Date().toISOString(),
@@ -2261,10 +2466,13 @@ app.post(
   asyncRoute(async (req, res) => {
     const previous = await ownedSession(req, req.params.id);
     if (previous.state !== "ENDED")
-      throw Object.assign(new Error("Chá»‰ cÃ³ thá»ƒ chÆ¡i láº¡i phiÃªn Ä‘Ã£ káº¿t thÃºc."), {
-        status: 409,
-        code: "SESSION_NOT_REPLAYABLE",
-      });
+      throw Object.assign(
+        new Error("Chá»‰ cÃ³ thá»ƒ chÆ¡i láº¡i phiÃªn Ä‘Ã£ káº¿t thÃºc."),
+        {
+          status: 409,
+          code: "SESSION_NOT_REPLAYABLE",
+        },
+      );
     const quiz = await hostableQuiz(req, previous.quizId);
     await assertQuizPublishable(quiz.id);
     const questions = await listQuestions(quiz.id);
@@ -2294,9 +2502,12 @@ app.post(
   asyncRoute(async (req, res) => {
     const s = await ownedSession(req, req.params.id);
     if (s.state !== "LOBBY")
-      throw Object.assign(new Error("Chá»‰ cÃ³ thá»ƒ loáº¡i ngÆ°á»i chÆ¡i á»Ÿ lobby."), {
-        status: 409,
-      });
+      throw Object.assign(
+        new Error("Chá»‰ cÃ³ thá»ƒ loáº¡i ngÆ°á»i chÆ¡i á»Ÿ lobby."),
+        {
+          status: 409,
+        },
+      );
     await removePlayer(s.id, req.params.playerId);
     io.to(`player:${req.params.playerId}`).emit("player:kicked");
     await emitSnapshot("lobby:updated", s.id);
@@ -2329,10 +2540,13 @@ app.post(
         status: 404,
       });
     if (s.state !== "RUNNING")
-      throw Object.assign(new Error("CÃ¢u há»i hiá»‡n khÃ´ng nháº­n Ä‘Ã¡p Ã¡n."), {
-        status: 409,
-        code: "QUESTION_CLOSED",
-      });
+      throw Object.assign(
+        new Error("CÃ¢u há»i hiá»‡n khÃ´ng nháº­n Ä‘Ã¡p Ã¡n."),
+        {
+          status: 409,
+          code: "QUESTION_CLOSED",
+        },
+      );
     const questions = await sessionQuestions(s);
     if (questions[s.currentQuestionIndex]?.id !== q.id)
       throw Object.assign(new Error("KhÃ´ng pháº£i cÃ¢u há»i hiá»‡n táº¡i."), {
@@ -2340,10 +2554,13 @@ app.post(
       });
     const elapsedMs = Date.now() - new Date(s.questionStartedAt).getTime();
     if (elapsedMs > q.timeLimitSec * 1000 + 1000)
-      throw Object.assign(new Error("ÄÃ£ háº¿t thá»i gian tráº£ lá»i cÃ¢u há»i."), {
-        status: 409,
-        code: "QUESTION_TIMEOUT",
-      });
+      throw Object.assign(
+        new Error("ÄÃ£ háº¿t thá»i gian tráº£ lá»i cÃ¢u há»i."),
+        {
+          status: 409,
+          code: "QUESTION_TIMEOUT",
+        },
+      );
     const correct =
       q.type === "TEXT"
         ? q.acceptedAnswers.some(
@@ -2393,11 +2610,16 @@ app.get(
       });
     const session = await getSession(req.params.id);
     if (!session)
-      throw Object.assign(new Error("KhÃ´ng tÃ¬m tháº¥y phiÃªn."), { status: 404 });
-    if (session.state !== "ENDED")
-      throw Object.assign(new Error("Káº¿t quáº£ chá»‰ cÃ³ sau khi game káº¿t thÃºc."), {
-        status: 409,
+      throw Object.assign(new Error("KhÃ´ng tÃ¬m tháº¥y phiÃªn."), {
+        status: 404,
       });
+    if (session.state !== "ENDED")
+      throw Object.assign(
+        new Error("Káº¿t quáº£ chá»‰ cÃ³ sau khi game káº¿t thÃºc."),
+        {
+          status: 409,
+        },
+      );
     res.json(await buildPlayerResult(req.params.id, req.auth.sub));
   }),
 );
@@ -2407,7 +2629,9 @@ app.get(
   asyncRoute(async (req, res) => {
     const session = await getSession(req.params.id);
     if (!session)
-      throw Object.assign(new Error("KhÃ´ng tÃ¬m tháº¥y phiÃªn."), { status: 404 });
+      throw Object.assign(new Error("KhÃ´ng tÃ¬m tháº¥y phiÃªn."), {
+        status: 404,
+      });
     const hostCanSee =
       req.auth?.kind === "host" &&
       (req.auth.role === "ADMIN" || req.auth.sub === session.hostId);
@@ -2524,7 +2748,10 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     console.warn(`[${status}] ${e.code || "REQUEST_REJECTED"}: ${e.message}`);
   res.status(status).json({
     code: e.code ?? "INTERNAL_ERROR",
-    message: status < 500 ? e.message : "Há»‡ thá»‘ng gáº·p lá»—i, vui lÃ²ng thá»­ láº¡i.",
+    message:
+      status < 500
+        ? e.message
+        : "Há»‡ thá»‘ng gáº·p lá»—i, vui lÃ²ng thá»­ láº¡i.",
   });
 });
 

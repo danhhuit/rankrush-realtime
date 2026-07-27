@@ -229,9 +229,7 @@ function getSystemTheme(): Theme {
 
 function initialThemePreference(): ThemePreference {
   const saved = localStorage.getItem("rr_theme");
-  const pref = normalizeThemePreference(saved);
-  // No "system" mode — default to light
-  return pref === "system" ? "light" : pref;
+  return normalizeThemePreference(saved);
 }
 
 function initialLocale(): Locale {
@@ -278,7 +276,8 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
       locale,
       setLocale,
       theme,
-      toggleTheme: () => setThemePreference(theme === "dark" ? "light" : "dark"),
+      toggleTheme: () =>
+        setThemePreference(theme === "dark" ? "light" : "dark"),
       themePreference,
       setThemePreference,
       t: (key) => messages[locale][key],
