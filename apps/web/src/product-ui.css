@@ -3056,6 +3056,11 @@ html[data-theme="dark"] .password-toggle:hover {
 .avatar-upload-area input {
   display: none;
 }
+.avatar-upload-hint {
+  color: var(--muted);
+  display: block;
+  line-height: 1.45;
+}
 .avatar-preview {
   border-radius: 50%;
   height: 72px;

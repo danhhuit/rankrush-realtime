@@ -85,6 +85,11 @@ import {
 import { io, type Socket } from "socket.io-client";
 import { ApiError, hostToken, playerToken, request } from "./api";
 import AdminPage from "./AdminPage";
+import PlayerMusic from "./PlayerMusic";
+import {
+  AvatarImageError,
+  createAvatarDataUrl,
+} from "./avatar-image";
 import { AvatarCustomizer, defaultAvatar, PlayerAvatar } from "./PlayerAvatar";
 import { usePreferences } from "./preferences";
 import type {
@@ -2619,6 +2624,7 @@ function SettingsPage() {
     logoutOther: false,
   });
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarProcessing, setAvatarProcessing] = useState(false);
   const [saving, setSaving] = useState(false);
   useEffect(() => {
     void request<{ displayName: string; username?: string; email: string }>(
@@ -2639,8 +2645,46 @@ function SettingsPage() {
       )
       .catch((error) => toast.show((error as Error).message));
   }, []);
+  async function selectAvatar(file?: File) {
+    if (!file) return;
+    setAvatarProcessing(true);
+    try {
+      setAvatarPreview(await createAvatarDataUrl(file));
+      toast.show(
+        tr(
+          "Ảnh đã sẵn sàng. Bấm Lưu thay đổi để lưu vào Redis.",
+          "Photo ready. Select Save changes to store it in Redis.",
+        ),
+      );
+    } catch (error) {
+      const code =
+        error instanceof AvatarImageError ? error.code : "AVATAR_IMAGE_INVALID";
+      const messages = {
+        AVATAR_FILE_TOO_LARGE: tr(
+          "Ảnh gốc không được lớn hơn 10 MB.",
+          "The source image must not exceed 10 MB.",
+        ),
+        AVATAR_FILE_UNSUPPORTED: tr(
+          "Chỉ hỗ trợ ảnh JPG, PNG hoặc WebP.",
+          "Only JPG, PNG or WebP images are supported.",
+        ),
+        AVATAR_IMAGE_INVALID: tr(
+          "Không thể đọc tệp ảnh này.",
+          "This image file could not be read.",
+        ),
+        AVATAR_RESULT_TOO_LARGE: tr(
+          "Không thể thu nhỏ ảnh đủ để lưu. Hãy chọn ảnh khác.",
+          "The image could not be reduced enough. Choose another image.",
+        ),
+      };
+      toast.show(messages[code]);
+    } finally {
+      setAvatarProcessing(false);
+    }
+  }
   async function save(event: FormEvent) {
     event.preventDefault();
+    if (avatarProcessing) return;
     if (form.password !== form.confirmPassword) {
       toast.show(
         tr("Mật khẩu xác nhận không khớp.", "Passwords do not match."),
@@ -2742,18 +2786,31 @@ function SettingsPage() {
               <span className="eyebrow">{tr("\u1ea2nh \u0111\u1ea1i di\u1ec7n","Avatar")}</span>
               <div className="avatar-upload-area">
                 <img src={avatarPreview || "/brand/rankrush-r2.png"} alt="Avatar" className="avatar-preview" />
-                <input type="file" accept="image/*" onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    const reader = new FileReader();
-                    reader.onload = (ev) => setAvatarPreview(ev.target?.result as string);
-                    window.dispatchEvent(new Event("rr-user-updated"));
-                    reader.readAsDataURL(file);
-                  }
-                }} />
-                <span>{tr("T\u1ea3i \u1ea3nh l\u00ean","Upload photo")}</span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  disabled={avatarProcessing}
+                  onChange={(event) => {
+                    const input = event.currentTarget;
+                    const file = input.files?.[0];
+                    void selectAvatar(file).finally(() => {
+                      input.value = "";
+                    });
+                  }}
+                />
+                <span>
+                  {avatarProcessing
+                    ? tr("Đang xử lý ảnh...", "Processing photo...")
+                    : tr("Tải ảnh lên", "Upload photo")}
+                </span>
               </div>
             </label>
+            <small className="avatar-upload-hint">
+              {tr(
+                "JPG, PNG hoặc WebP; tối đa 10 MB. Ảnh sẽ được thu nhỏ trước khi lưu.",
+                "JPG, PNG or WebP; up to 10 MB. The image is resized before saving.",
+              )}
+            </small>
             <div className="avatar-presets">
               <span className="eyebrow">{tr("Ho\u1eb7c ch\u1ecdn m\u1eabu","Or pick a preset")}</span>
               <div className="preset-icons">
@@ -2869,7 +2926,7 @@ function SettingsPage() {
               {tr("Đăng xuất khỏi các thiết bị khác", "Log out of other devices")}
             </label>
           )}
-          <button className="button button-primary" disabled={saving}>
+          <button className="button button-primary" disabled={saving || avatarProcessing}>
             <Save />
             {saving
               ? tr("Đang lưu...", "Saving...")
@@ -4260,230 +4317,6 @@ function StartCountdown({ startedAt }: { startedAt: string }) {
         {labels[stage]}
       </div>
       <span>{tr("Sẵn sàng cho cuộc đua", "Get ready for the race")}</span>
-    </div>
-  );
-}
-
-const musicTracks = [
-  {
-    name: "Mây Trôi",
-    bpm: 76,
-    wave: "sine",
-    notes: [261.63, 329.63, 392, 329.63],
-  },
-  {
-    name: "Biển Sáng",
-    bpm: 82,
-    wave: "sine",
-    notes: [293.66, 369.99, 440, 369.99],
-  },
-  {
-    name: "Gió Nhẹ",
-    bpm: 72,
-    wave: "triangle",
-    notes: [220, 277.18, 329.63, 277.18],
-  },
-  {
-    name: "Bình Minh",
-    bpm: 88,
-    wave: "triangle",
-    notes: [261.63, 392, 329.63, 440],
-  },
-  {
-    name: "Mưa Êm",
-    bpm: 68,
-    wave: "sine",
-    notes: [196, 246.94, 293.66, 246.94],
-  },
-  {
-    name: "Đồi Xanh",
-    bpm: 80,
-    wave: "sine",
-    notes: [246.94, 311.13, 369.99, 311.13],
-  },
-  {
-    name: "Sao Khuya",
-    bpm: 70,
-    wave: "triangle",
-    notes: [174.61, 220, 261.63, 220],
-  },
-  {
-    name: "Dòng Sông",
-    bpm: 84,
-    wave: "sine",
-    notes: [233.08, 293.66, 349.23, 293.66],
-  },
-  {
-    name: "Thư Viện",
-    bpm: 64,
-    wave: "triangle",
-    notes: [207.65, 261.63, 311.13, 261.63],
-  },
-  {
-    name: "Khoảng Trời",
-    bpm: 90,
-    wave: "sine",
-    notes: [329.63, 415.3, 493.88, 415.3],
-  },
-  {
-    name: "Lá Non",
-    bpm: 78,
-    wave: "triangle",
-    notes: [277.18, 349.23, 415.3, 349.23],
-  },
-  {
-    name: "Hoàng Hôn",
-    bpm: 74,
-    wave: "sine",
-    notes: [196, 293.66, 246.94, 329.63],
-  },
-  {
-    name: "Cà Phê Sớm",
-    bpm: 86,
-    wave: "triangle",
-    notes: [261.63, 329.63, 440, 392],
-  },
-  {
-    name: "Tĩnh Lặng",
-    bpm: 60,
-    wave: "sine",
-    notes: [164.81, 207.65, 246.94, 207.65],
-  },
-  {
-    name: "Chuyến Đi",
-    bpm: 92,
-    wave: "triangle",
-    notes: [293.66, 440, 369.99, 493.88],
-  },
-  {
-    name: "Nhạc nền Free Fire",
-    bpm: 110,
-    wave: "square",
-    notes: [
-      329.63, 392, 440, 440,
-      329.63, 392, 440, 440,
-      329.63, 392, 440, 493.88, 523.25, 493.88, 440
-    ],
-  },
-] as const;
-
-function PlayerMusic({ disabled = false }: { disabled?: boolean }) {
-  const { tr } = usePreferences();
-  const [open, setOpen] = useState(false);
-  const [playing, setPlaying] = useState(false);
-  const [trackIndex, setTrackIndex] = useState(() =>
-    Math.min(
-      musicTracks.length - 1,
-      Math.max(0, Number(localStorage.getItem("rr_music_track") || 0)),
-    ),
-  );
-  const [volume, setVolume] = useState(() =>
-    Number(localStorage.getItem("rr_music_volume") || 28),
-  );
-  const audio = useRef<{ context: AudioContext; timer: number } | null>(null);
-
-  useEffect(() => {
-    localStorage.setItem("rr_music_track", String(trackIndex));
-    localStorage.setItem("rr_music_volume", String(volume));
-  }, [trackIndex, volume]);
-
-  useEffect(() => {
-    if (!playing || disabled || volume === 0) return;
-    const context = new AudioContext();
-    const track = musicTracks[trackIndex] || musicTracks[0];
-    let noteIndex = 0;
-    const playNote = () => {
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
-      oscillator.type = track.wave;
-      oscillator.frequency.value = track.notes[noteIndex % track.notes.length]!;
-      const now = context.currentTime;
-      const peak = Math.max(0.001, (volume / 100) * 0.055);
-      gain.gain.setValueAtTime(0.001, now);
-      gain.gain.exponentialRampToValueAtTime(peak, now + 0.08);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 1.1);
-      oscillator.connect(gain).connect(context.destination);
-      oscillator.start(now);
-      oscillator.stop(now + 1.15);
-      noteIndex += 1;
-    };
-    playNote();
-    const timer = window.setInterval(playNote, 60_000 / track.bpm);
-    audio.current = { context, timer };
-    return () => {
-      window.clearInterval(timer);
-      void context.close();
-      audio.current = null;
-    };
-  }, [playing, disabled, trackIndex, volume]);
-
-  return (
-    <div className="player-music">
-      <button
-        type="button"
-        className={cx("music-toggle", playing && !disabled && "active")}
-        onClick={() => setOpen((value) => !value)}
-        title={tr("Nhạc nền", "Background music")}
-      >
-        <Music2 />
-      </button>
-      {open && (
-        <div className="music-panel">
-          <div className="music-panel-head">
-            <span>
-              <Music2 />
-              <b>{tr("Nhạc nền tập trung", "Focus music")}</b>
-            </span>
-            <button type="button" onClick={() => setOpen(false)}>
-              <X />
-            </button>
-          </div>
-          <label>
-            {tr("Chọn bài nhạc", "Choose a track")}
-            <select
-              value={trackIndex}
-              onChange={(event) => setTrackIndex(Number(event.target.value))}
-            >
-              {musicTracks.map((track, index) => (
-                <option value={index} key={track.name}>
-                  {index + 1}. {track.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="music-volume">
-            <span>
-              <Volume2 /> {tr("Âm lượng", "Volume")} <b>{volume}%</b>
-            </span>
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={volume}
-              onChange={(event) => setVolume(Number(event.target.value))}
-            />
-          </label>
-          <button
-            type="button"
-            className="button button-primary button-block"
-            disabled={disabled}
-            onClick={() => setPlaying((value) => !value)}
-          >
-            {playing ? <Pause /> : <Play />}
-            {playing
-              ? tr("Tạm dừng nhạc", "Pause music")
-              : tr("Phát nhạc", "Play music")}
-          </button>
-          {disabled && (
-            <small>
-              {tr(
-                "Host đang tắt âm thanh thiết bị.",
-                "The host muted player devices.",
-              )}
-            </small>
-          )}
-        </div>
-      )}
     </div>
   );
 }

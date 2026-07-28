@@ -3431,3 +3431,17 @@ html[data-theme="dark"] .animal-presets button.active {
   background: var(--purple);
   border-color: var(--purple);
 }
+
+
+/* FREE_FIRE_OFFICIAL_MUSIC */
+.music-panel .music-error {
+  color: var(--danger, #c83b4d);
+}
+.youtube-audio-host {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}

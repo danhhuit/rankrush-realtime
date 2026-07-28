@@ -1,0 +1,22 @@
+RANKRUSH - CAP NHAT ADMIN VA SUA CAI DAT TREN O FAT32
+
+
+
+Cai dependency theo che do FAT32:
+   npm run install:fat32
+
+Kiem tra Redis va tao tai khoan Admin:
+   docker exec rankrush-redis redis-cli ping
+   npm run admin:setup
+
+Kiem tra va chay:
+   npm run lint
+   npm test
+   npm run build
+   npm run dev
+
+Tai khoan:
+Username: admin
+Password: @dmin123
+
+Khong chay "npm install" hoac "npm ci" tren o FAT32.

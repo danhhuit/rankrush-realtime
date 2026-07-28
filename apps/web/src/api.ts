@@ -36,6 +36,8 @@ const englishErrors: Record<string, string> = {
   ADMIN_REQUIRED: "Administrator access is required.",
   ADMIN_SELF_PROTECTED:
     "You cannot change your own administrator account here.",
+  AVATAR_INVALID: "The avatar image format is invalid.",
+  AVATAR_TOO_LARGE: "The avatar image is too large. Choose another image.",
   BACKUP_BUSY: "Another backup or restore operation is already running.",
   BACKUP_CHECKSUM_INVALID:
     "The backup checksum is invalid. The file may have been modified.",
