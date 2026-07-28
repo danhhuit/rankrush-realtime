@@ -6,14 +6,14 @@ export type SynthMusicTrack = {
   notes: readonly number[];
 };
 
-export type YouTubeMusicTrack = {
-  kind: "youtube";
+export type FileMusicTrack = {
+  kind: "file";
   name: string;
-  videoId: string;
+  src: string;
   sourceLabel: string;
 };
 
-export type MusicTrack = SynthMusicTrack | YouTubeMusicTrack;
+export type MusicTrack = SynthMusicTrack | FileMusicTrack;
 
 export const musicTracks: readonly MusicTrack[] = [
   {
@@ -122,10 +122,9 @@ export const musicTracks: readonly MusicTrack[] = [
     notes: [293.66, 440, 369.99, 493.88],
   },
   {
-    kind: "youtube",
+    kind: "file",
     name: "Free Fire Original Lobby",
-    videoId: "ewqGxOd5gO8",
-    sourceLabel: "Garena Free Fire",
+    src: "/music/free-fire-lobby.mp3",
+    sourceLabel: "Tệp MP3 cục bộ",
   },
 ];
-

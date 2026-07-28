@@ -664,8 +664,9 @@ function Header() {
                 <button
                   className="header-avatar"
                   onClick={() => setProfileOpen(!profileOpen)}
+                  style={user.avatar && user.avatar.startsWith("data:image") ? { backgroundImage: `url(${user.avatar})`, backgroundSize: 'cover', backgroundPosition: 'center', color: 'transparent' } : {}}
                 >
-                  {(user.displayName || "H")[0]}
+                  {user.avatar && !user.avatar.startsWith("data:image") ? user.avatar : (user.displayName || "H")[0]}
                 </button>
                 {profileOpen && (
                   <div className="profile-dropdown">
@@ -2324,15 +2325,22 @@ type SessionSummary = Snapshot["session"] & {
 
 function DashboardSideNav({ active }: { active: string }) {
   const { tr } = usePreferences();
+  const [userVersion, setUserVersion] = useState(0);
+  useEffect(() => {
+    const handler = () => setUserVersion((v) => v + 1);
+    window.addEventListener("rr-user-updated", handler);
+    return () => window.removeEventListener("rr-user-updated", handler);
+  }, []);
   const user = useMemo(() => {
     try {
       return JSON.parse(localStorage.getItem("rr_user") || "{}") as {
         displayName?: string;
+        avatar?: string;
       };
     } catch {
       return {};
     }
-  }, []);
+  }, [userVersion]);
   const item = (to: string, key: string, icon: ReactNode, label: string) => (
     <Link className={active === key ? "active" : ""} to={to}>
       {icon}
@@ -2387,7 +2395,27 @@ function DashboardSideNav({ active }: { active: string }) {
         )}
       </nav>
       <div className="sidebar-user">
-        <div>{(user.displayName || "H")[0]}</div>
+        <div
+          style={
+            user.avatar && (user.avatar.startsWith("data:image") || user.avatar.startsWith("http") || user.avatar.startsWith("/"))
+              ? {
+                  backgroundImage: `url(${user.avatar})`,
+                  backgroundSize: "cover",
+                  backgroundPosition: "center",
+                  color: "transparent",
+                }
+              : {}
+          }
+        >
+          {user.avatar &&
+          !(
+            user.avatar.startsWith("data:image") ||
+            user.avatar.startsWith("http") ||
+            user.avatar.startsWith("/")
+          )
+            ? user.avatar
+            : (user.displayName || "H")[0]}
+        </div>
         <span>
           <b>{user.displayName || "Host"}</b>
           <small>{tr("Tài khoản Host", "Host account")}</small>
@@ -2627,13 +2655,13 @@ function SettingsPage() {
   const [avatarProcessing, setAvatarProcessing] = useState(false);
   const [saving, setSaving] = useState(false);
   useEffect(() => {
-    void request<{ displayName: string; username?: string; email: string }>(
+    void request<{ displayName: string; username?: string; email: string; avatar?: string }>(
       "/auth/me",
       {
         token: hostToken(),
       },
     )
-      .then((user) =>
+      .then((user) => {
         setForm({
           ...user,
           username: user.username || user.email.split("@")[0] || "host",
@@ -2641,8 +2669,11 @@ function SettingsPage() {
           password: "",
           confirmPassword: "",
           logoutOther: false,
-        }),
-      )
+        });
+        if (user.avatar) {
+          setAvatarPreview(user.avatar);
+        }
+      })
       .catch((error) => toast.show((error as Error).message));
   }, []);
   async function selectAvatar(file?: File) {
@@ -2697,12 +2728,14 @@ function SettingsPage() {
         displayName: string;
         username: string;
         email: string;
+        avatar?: string;
       }>("/auth/me", {
         method: "PUT",
         token: hostToken(),
         body: JSON.stringify({
           displayName: form.displayName,
           username: form.username,
+          avatar: avatarPreview || "",
           currentPassword: form.currentPassword,
           password: form.password,
           confirmPassword: form.confirmPassword,
@@ -2785,24 +2818,33 @@ function SettingsPage() {
             <label className="avatar-upload-label">
               <span className="eyebrow">{tr("\u1ea2nh \u0111\u1ea1i di\u1ec7n","Avatar")}</span>
               <div className="avatar-upload-area">
-                <img src={avatarPreview || "/brand/rankrush-r2.png"} alt="Avatar" className="avatar-preview" />
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  disabled={avatarProcessing}
-                  onChange={(event) => {
-                    const input = event.currentTarget;
-                    const file = input.files?.[0];
-                    void selectAvatar(file).finally(() => {
-                      input.value = "";
-                    });
-                  }}
-                />
-                <span>
-                  {avatarProcessing
-                    ? tr("Đang xử lý ảnh...", "Processing photo...")
-                    : tr("Tải ảnh lên", "Upload photo")}
-                </span>
+
+                {avatarPreview &&
+                !(
+                  avatarPreview.startsWith("data:image") ||
+                  avatarPreview.startsWith("http") ||
+                  avatarPreview.startsWith("/")
+                ) ? (
+                  <div className="avatar-preview avatar-preview-emoji">
+                    {avatarPreview}
+                  </div>
+                ) : (
+                  <img
+                    src={avatarPreview || "/brand/rankrush-r2.png"}
+                    alt="Avatar"
+                    className="avatar-preview"
+                  />
+                )}
+                <input type="file" accept="image/*" onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => setAvatarPreview(ev.target?.result as string);
+                    reader.readAsDataURL(file);
+                  }
+                }} />
+                <span>{tr("T\u1ea3i \u1ea3nh l\u00ean","Upload photo")}</span>
+
               </div>
             </label>
             <small className="avatar-upload-hint">

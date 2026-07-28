@@ -3068,6 +3068,12 @@ html[data-theme="dark"] .password-toggle:hover {
   width: 72px;
   background: var(--surface);
 }
+.avatar-preview-emoji {
+  display: grid;
+  place-items: center;
+  font-size: 36px;
+  line-height: 1;
+}
 .avatar-presets {
   display: grid;
   gap: 8px;

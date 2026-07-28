@@ -1,4 +1,4 @@
-﻿import http from "node:http";
+import http from "node:http";
 import { createHash, randomInt } from "node:crypto";
 import { existsSync } from "node:fs";
 import { networkInterfaces } from "node:os";
@@ -327,14 +327,39 @@ async function gameSnapshot(
 }
 
 async function emitSnapshot(event: string, sessionId: string) {
+  const hostRoom = `host:${sessionId}`;
+  const hostRoomSet = io.sockets.adapter.rooms.get(hostRoom);
+  const hasHost = hostRoomSet && hostRoomSet.size > 0;
+
   const players = await listPlayers(sessionId);
+  const activePlayers = players.filter((p) => {
+    const playerRoom = `player:${p.id}`;
+    const roomSet = io.sockets.adapter.rooms.get(playerRoom);
+    return roomSet && roomSet.size > 0;
+  });
+
+  const hostSnapPromise = hasHost
+    ? gameSnapshot(sessionId, undefined, "host")
+    : Promise.resolve(null);
+
+  const playerSnapPromises = activePlayers.map((p) =>
+    gameSnapshot(sessionId, p.id, "player")
+  );
+
   const [hostSnapshot, ...playerSnapshots] = await Promise.all([
-    gameSnapshot(sessionId, undefined, "host"),
-    ...players.map((player) => gameSnapshot(sessionId, player.id, "player")),
+    hostSnapPromise,
+    ...playerSnapPromises,
   ]);
-  io.to(`host:${sessionId}`).emit(event, hostSnapshot);
-  players.forEach((player, index) => {
-    io.to(`player:${player.id}`).emit(event, playerSnapshots[index]);
+
+  if (hasHost && hostSnapshot) {
+    io.to(hostRoom).emit(event, hostSnapshot);
+  }
+
+  activePlayers.forEach((player, index) => {
+    const snap = playerSnapshots[index];
+    if (snap) {
+      io.to(`player:${player.id}`).emit(event, snap);
+    }
   });
 }
 
@@ -862,6 +887,7 @@ app.get(
       email: user.email,
       displayName: user.displayName,
       role: user.role,
+      avatar: user.avatar || "",
     });
   }),
 );
@@ -882,6 +908,7 @@ app.put(
           .trim()
           .toLowerCase()
           .regex(/^[a-z0-9._-]{3,30}$/),
+        avatar: z.string().optional().or(z.literal("")),
         currentPassword: z.string().max(100).optional().or(z.literal("")),
         password: z.string().min(8).max(100).optional().or(z.literal("")),
         confirmPassword: z.string().max(100).optional().or(z.literal("")),
@@ -937,6 +964,7 @@ app.put(
       ...current,
       displayName: data.displayName,
       username: data.username,
+      avatar: data.avatar !== undefined ? data.avatar : (current.avatar || ""),
       passwordHash: data.password
         ? await bcrypt.hash(data.password, 12)
         : current.passwordHash,
@@ -944,6 +972,7 @@ app.put(
     const tx = redis.multi().hset(keys.user(updated.id), {
       displayName: updated.displayName,
       username: updated.username || "",
+      avatar: updated.avatar || "",
       passwordHash: updated.passwordHash,
     });
     if (data.password) tx.hdel(keys.user(updated.id), "rawPassword");
@@ -957,6 +986,7 @@ app.put(
       username: updated.username,
       email: updated.email,
       displayName: updated.displayName,
+      avatar: updated.avatar,
       role: updated.role,
     });
   }),
@@ -2249,6 +2279,17 @@ app.post(
   "/api/sessions/join",
   optionalAuth,
   asyncRoute(async (req, res) => {
+    const forwarded = req.headers["x-forwarded-for"];
+    const ip = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(",")[0].trim() || req.ip || "unknown";
+    const ipKey = `${config.REDIS_PREFIX}:rate-limit:join:${ip}`;
+    const joinAttempts = await redis.incr(ipKey);
+    if (joinAttempts === 1) await redis.expire(ipKey, 60);
+    if (joinAttempts > 10) {
+      throw Object.assign(
+        new Error("Quá nhiều yêu cầu tham gia. Vui lòng thử lại sau."),
+        { status: 429, code: "JOIN_RATE_LIMITED" },
+      );
+    }
     const data = z
       .object({
         pin: z.string().regex(/^\d{6}$/),

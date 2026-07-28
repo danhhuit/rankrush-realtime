@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import { musicTracks } from "./background-music";
 
 describe("background music catalog", () => {
-  it("uses the official Free Fire Original Lobby stream for track 16", () => {
+  it("uses the local Free Fire Original Lobby file for track 16", () => {
     expect(musicTracks).toHaveLength(16);
     expect(musicTracks[15]).toEqual({
-      kind: "youtube",
+      kind: "file",
       name: "Free Fire Original Lobby",
-      videoId: "ewqGxOd5gO8",
-      sourceLabel: "Garena Free Fire",
+      src: "/music/free-fire-lobby.mp3",
+      sourceLabel: "Tệp MP3 cục bộ",
     });
   });
 
@@ -18,4 +18,3 @@ describe("background music catalog", () => {
     );
   });
 });
-

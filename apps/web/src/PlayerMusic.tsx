@@ -2,10 +2,8 @@ import { Music2, Pause, Play, Volume2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { musicTracks } from "./background-music";
 import { usePreferences } from "./preferences";
-import {
-  loadYouTubeIframeApi,
-  type YouTubePlayer,
-} from "./youtube-iframe-api";
+
+type FileStatus = "idle" | "loading" | "ready" | "playing" | "paused" | "error";
 
 export default function PlayerMusic({
   disabled = false,
@@ -14,8 +12,8 @@ export default function PlayerMusic({
 }) {
   const { tr } = usePreferences();
   const [open, setOpen] = useState(false);
-  const [playing, setPlaying] = useState(false);
-  const [youtubeReady, setYoutubeReady] = useState(false);
+  const [synthPlaying, setSynthPlaying] = useState(false);
+  const [fileStatus, setFileStatus] = useState<FileStatus>("idle");
   const [musicError, setMusicError] = useState("");
   const [trackIndex, setTrackIndex] = useState(() =>
     Math.min(
@@ -27,11 +25,28 @@ export default function PlayerMusic({
     Number(localStorage.getItem("rr_music_volume") || 28),
   );
   const audio = useRef<{ context: AudioContext; timer: number } | null>(null);
-  const youtubeHost = useRef<HTMLDivElement>(null);
-  const youtubePlayer = useRef<YouTubePlayer | null>(null);
+  const fileAudio = useRef<HTMLAudioElement>(null);
   const wantsToPlay = useRef(false);
   const track = musicTracks[trackIndex] ?? musicTracks[0]!;
-  const usesYouTube = track.kind === "youtube";
+  const usesFile = track.kind === "file";
+  const playing = usesFile ? fileStatus === "playing" : synthPlaying;
+
+  const showFileError = () => {
+    const mediaErrorCode = fileAudio.current?.error?.code;
+    wantsToPlay.current = false;
+    setFileStatus("error");
+    setMusicError(
+      mediaErrorCode === 2
+        ? tr(
+            "Không tải được tệp nhạc. Hãy tải lại trang rồi thử lại.",
+            "The music file could not be loaded. Reload the page and try again.",
+          )
+        : tr(
+            "Không tìm thấy hoặc không hỗ trợ tệp /music/free-fire-lobby.mp3. Hãy kiểm tra đúng tên và định dạng MP3.",
+            "The file /music/free-fire-lobby.mp3 was not found or is unsupported. Check its exact name and MP3 format.",
+          ),
+    );
+  };
 
   useEffect(() => {
     localStorage.setItem("rr_music_track", String(trackIndex));
@@ -39,91 +54,31 @@ export default function PlayerMusic({
   }, [trackIndex, volume]);
 
   useEffect(() => {
-    if (youtubePlayer.current || !youtubeHost.current) return;
-    let cancelled = false;
-    const youtubeTrack = musicTracks.find((item) => item.kind === "youtube");
-
-    void loadYouTubeIframeApi()
-      .then((api) => {
-        if (
-          cancelled ||
-          !youtubeHost.current ||
-          youtubePlayer.current ||
-          !youtubeTrack
-        ) {
-          return;
-        }
-        const player = new api.Player(youtubeHost.current, {
-          videoId: youtubeTrack.videoId,
-          width: "1",
-          height: "1",
-          playerVars: {
-            autoplay: 0,
-            controls: 0,
-            disablekb: 1,
-            loop: 1,
-            playlist: youtubeTrack.videoId,
-            playsinline: 1,
-            origin: window.location.origin,
-          },
-          events: {
-            onReady: ({ target }) => {
-              if (cancelled) return;
-              youtubePlayer.current = target;
-              target.setVolume(volume);
-              setYoutubeReady(true);
-              setMusicError("");
-              if (wantsToPlay.current && !disabled && volume > 0) {
-                target.playVideo();
-              }
-            },
-            onError: () => {
-              if (!cancelled) {
-                setYoutubeReady(false);
-                setPlaying(false);
-                setMusicError(
-                  tr(
-                    "Không thể tải nhạc Free Fire. Hãy kiểm tra kết nối Internet.",
-                    "Could not load Free Fire music. Check your Internet connection.",
-                  ),
-                );
-              }
-            },
-          },
-        });
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setMusicError(
-            tr(
-              "Không thể kết nối nguồn nhạc chính thức của Free Fire.",
-              "Could not connect to the official Free Fire music source.",
-            ),
-          );
-        }
-      });
-
-    return () => {
-      cancelled = true;
-      youtubePlayer.current?.destroy();
-      youtubePlayer.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
-    wantsToPlay.current = playing;
-    const player = youtubePlayer.current;
+    const player = fileAudio.current;
     if (!player) return;
-    player.setVolume(volume);
-    if (usesYouTube && playing && !disabled && volume > 0) {
-      player.playVideo();
-    } else {
-      player.pauseVideo();
+    player.volume = Math.min(1, Math.max(0, volume / 100));
+    if (disabled || volume === 0 || !usesFile) {
+      wantsToPlay.current = false;
+      player.pause();
+      if (usesFile && fileStatus !== "error") {
+        setFileStatus("paused");
+      }
     }
-  }, [playing, disabled, usesYouTube, volume, youtubeReady]);
+  }, [disabled, fileStatus, usesFile, volume]);
 
   useEffect(() => {
-    if (!playing || disabled || volume === 0 || track.kind !== "synth") return;
+    const player = fileAudio.current;
+    if (!player || !usesFile) return;
+    wantsToPlay.current = false;
+    setMusicError("");
+    setFileStatus("loading");
+    player.load();
+  }, [trackIndex, usesFile]);
+
+  useEffect(() => {
+    if (!synthPlaying || disabled || volume === 0 || track.kind !== "synth") {
+      return;
+    }
     const synthTrack = track;
     const context = new AudioContext();
     let noteIndex = 0;
@@ -151,26 +106,86 @@ export default function PlayerMusic({
       void context.close();
       audio.current = null;
     };
-  }, [playing, disabled, track, volume]);
+  }, [synthPlaying, disabled, track, volume]);
 
-  const togglePlayback = () => {
-    const nextPlaying = !playing;
-    wantsToPlay.current = nextPlaying;
+  const togglePlayback = async () => {
     setMusicError("");
-    setPlaying(nextPlaying);
-    if (usesYouTube && youtubePlayer.current) {
-      youtubePlayer.current.setVolume(volume);
-      if (nextPlaying && !disabled && volume > 0) {
-        youtubePlayer.current.playVideo();
-      } else {
-        youtubePlayer.current.pauseVideo();
-      }
+    if (!usesFile) {
+      setSynthPlaying((value) => !value);
+      return;
     }
+
+    const player = fileAudio.current;
+    if (!player) return;
+
+    if (fileStatus === "playing" || wantsToPlay.current) {
+      wantsToPlay.current = false;
+      player.pause();
+      setFileStatus("paused");
+      return;
+    }
+
+    wantsToPlay.current = true;
+    setFileStatus("loading");
+    player.volume = Math.min(1, Math.max(0, volume / 100));
+    try {
+      await player.play();
+    } catch (error) {
+      wantsToPlay.current = false;
+      const blocked =
+        error instanceof DOMException && error.name === "NotAllowedError";
+      setFileStatus("error");
+      setMusicError(
+        blocked
+          ? tr(
+              "Trình duyệt đã chặn phát nhạc. Hãy nhấn Phát nhạc một lần nữa.",
+              "The browser blocked playback. Press Play music once more.",
+            )
+          : tr(
+              "Không thể phát tệp nhạc. Hãy kiểm tra file MP3 rồi tải lại trang.",
+              "The music file could not be played. Check the MP3 file and reload the page.",
+            ),
+      );
+    }
+  };
+
+  const selectTrack = (nextTrackIndex: number) => {
+    wantsToPlay.current = false;
+    setSynthPlaying(false);
+    fileAudio.current?.pause();
+    setFileStatus("idle");
+    setMusicError("");
+    setTrackIndex(nextTrackIndex);
   };
 
   return (
     <div className="player-music">
-      <div ref={youtubeHost} className="youtube-audio-host" aria-hidden="true" />
+      <audio
+        ref={fileAudio}
+        src={usesFile ? track.src : undefined}
+        preload="metadata"
+        loop
+        onLoadStart={() => {
+          if (usesFile) setFileStatus("loading");
+        }}
+        onCanPlay={() => {
+          if (usesFile && !wantsToPlay.current) setFileStatus("ready");
+        }}
+        onPlaying={() => {
+          wantsToPlay.current = true;
+          setFileStatus("playing");
+          setMusicError("");
+        }}
+        onWaiting={() => {
+          if (wantsToPlay.current) setFileStatus("loading");
+        }}
+        onPause={() => {
+          wantsToPlay.current = false;
+          if (usesFile && fileStatus !== "error") setFileStatus("paused");
+        }}
+        onError={showFileError}
+        aria-hidden="true"
+      />
       <button
         type="button"
         className={`music-toggle${playing && !disabled ? " active" : ""}`}
@@ -194,7 +209,7 @@ export default function PlayerMusic({
             {tr("Chọn bài nhạc", "Choose a track")}
             <select
               value={trackIndex}
-              onChange={(event) => setTrackIndex(Number(event.target.value))}
+              onChange={(event) => selectTrack(Number(event.target.value))}
             >
               {musicTracks.map((item, index) => (
                 <option value={index} key={item.name}>
@@ -219,24 +234,32 @@ export default function PlayerMusic({
             type="button"
             className="button button-primary button-block"
             disabled={disabled}
-            onClick={togglePlayback}
+            onClick={() => void togglePlayback()}
           >
             {playing ? <Pause /> : <Play />}
-            {playing
-              ? tr("Tạm dừng nhạc", "Pause music")
-              : tr("Phát nhạc", "Play music")}
+            {usesFile && fileStatus === "loading" && wantsToPlay.current
+              ? tr("Đang tải nhạc...", "Loading music...")
+              : playing
+                ? tr("Tạm dừng nhạc", "Pause music")
+                : tr("Phát nhạc", "Play music")}
           </button>
-          {track.kind === "youtube" && !musicError && (
+          {track.kind === "file" && !musicError && (
             <small className="music-source-note">
-              {youtubeReady
-                ? tr(
-                    `Đang dùng bản chính thức từ ${track.sourceLabel}.`,
-                    `Official track from ${track.sourceLabel}.`,
-                  )
-                : tr(
-                    "Đang kết nối nguồn nhạc Free Fire...",
-                    "Connecting to the Free Fire music source...",
-                  )}
+              {fileStatus === "playing"
+                ? tr(`Đang phát: ${track.name}.`, `Now playing: ${track.name}.`)
+                : fileStatus === "loading" && wantsToPlay.current
+                  ? tr("Đang tải bài nhạc...", "Buffering the track...")
+                  : fileStatus === "paused"
+                    ? tr("Nhạc đã tạm dừng.", "Music is paused.")
+                    : fileStatus === "ready"
+                      ? tr(
+                          `Tệp nhạc ${track.sourceLabel} đã sẵn sàng.`,
+                          `The ${track.sourceLabel} music is ready.`,
+                        )
+                      : tr(
+                          "Đang đọc tệp nhạc Free Fire...",
+                          "Loading the Free Fire music file...",
+                        )}
             </small>
           )}
           {musicError && <small className="music-error">{musicError}</small>}
@@ -253,4 +276,3 @@ export default function PlayerMusic({
     </div>
   );
 }
-
