@@ -1,9 +1,56 @@
 const API = "/api";
+const vietnameseErrors: Record<string, string> = {
+  ACCOUNT_SUSPENDED: "Tài khoản đã bị tạm khóa.",
+  ADMIN_REQUIRED: "Bạn cần quyền quản trị viên để thực hiện thao tác này.",
+  ADMIN_SELF_PROTECTED:
+    "Bạn không thể thay đổi quyền hoặc mật khẩu quản trị của chính mình tại đây.",
+  BACKUP_BUSY: "Một thao tác sao lưu hoặc phục hồi khác đang được thực hiện.",
+  BACKUP_CHECKSUM_INVALID: "Bản sao không còn nguyên vẹn hoặc đã bị thay đổi.",
+  BACKUP_CORRUPTED: "Bản sao bị lỗi hoặc không đúng định dạng.",
+  BACKUP_ID_INVALID: "Mã bản sao lưu không hợp lệ.",
+  BACKUP_NAMESPACE_MISMATCH: "Bản sao này không thuộc dữ liệu của ứng dụng.",
+  BACKUP_NOT_FOUND: "Không tìm thấy bản sao lưu.",
+  BACKUP_RESTORE_FAILED:
+    "Phục hồi thất bại; dữ liệu ban đầu đã được tự động khôi phục.",
+  BACKUP_ROLLBACK_FAILED:
+    "Phục hồi và hoàn tác đều thất bại. Hãy dùng bản sao an toàn.",
+  BACKUP_TOO_LARGE: "Dữ liệu hiện tại vượt quá giới hạn sao lưu.",
+  CURRENT_PASSWORD_INVALID: "Mật khẩu hiện tại không đúng.",
+  EMAIL_EXISTS: "Địa chỉ email đã được sử dụng.",
+  EMAIL_CODE_INVALID: "Mã xác nhận email không đúng hoặc đã hết hạn.",
+  EMAIL_CODE_RATE_LIMITED: "Vui lòng chờ trước khi yêu cầu gửi lại mã.",
+  FORBIDDEN: "Bạn không có quyền thực hiện thao tác này.",
+  LAST_ADMIN_PROTECTED:
+    "Hệ thống phải còn ít nhất một quản trị viên đang hoạt động.",
+  LOGIN_FAILED: "Tên đăng nhập/email hoặc mật khẩu không đúng.",
+  LOGIN_RATE_LIMITED:
+    "Bạn đã đăng nhập sai quá nhiều lần. Vui lòng thử lại sau.",
+  RESET_CODE_INVALID: "Mã đặt lại mật khẩu không đúng hoặc đã hết hạn.",
+  UNAUTHORIZED: "Vui lòng đăng nhập để tiếp tục.",
+  USERNAME_EXISTS: "Tên đăng nhập đã được sử dụng.",
+  VALIDATION_ERROR: "Thông tin nhập vào chưa hợp lệ. Vui lòng kiểm tra lại.",
+};
+
 const englishErrors: Record<string, string> = {
   ACCOUNT_SUSPENDED: "This account has been suspended.",
   ADMIN_REQUIRED: "Administrator access is required.",
   ADMIN_SELF_PROTECTED:
     "You cannot change your own administrator account here.",
+  AVATAR_INVALID: "The avatar image format is invalid.",
+  AVATAR_TOO_LARGE: "The avatar image is too large. Choose another image.",
+  BACKUP_BUSY: "Another backup or restore operation is already running.",
+  BACKUP_CHECKSUM_INVALID:
+    "The backup checksum is invalid. The file may have been modified.",
+  BACKUP_CORRUPTED: "The backup file is corrupted or has an invalid format.",
+  BACKUP_ID_INVALID: "The backup identifier is invalid.",
+  BACKUP_NAMESPACE_MISMATCH:
+    "This backup belongs to a different Redis namespace.",
+  BACKUP_NOT_FOUND: "Backup not found.",
+  BACKUP_RESTORE_FAILED:
+    "Restore failed. The original data was rolled back automatically.",
+  BACKUP_ROLLBACK_FAILED:
+    "Restore and automatic rollback both failed. Use the safety backup.",
+  BACKUP_TOO_LARGE: "The Redis namespace is too large to back up.",
   CORS_ORIGIN_DENIED: "This website origin is not allowed.",
   CURRENT_PASSWORD_INVALID: "Your current password is incorrect.",
   EMAIL_EXISTS: "This email address is already in use.",
@@ -60,7 +107,13 @@ function localizedError(payload: any) {
     return (
       englishErrors[payload?.code] || "The request could not be completed."
     );
-  return payload?.message || "Không thể kết nối hệ thống.";
+  const mapped = vietnameseErrors[payload?.code];
+  if (mapped) return mapped;
+  const message = String(payload?.message || "");
+  const corrupted = /(?:Ã|Ä|Æ|Â|á»|áº)/.test(message);
+  return message && !corrupted
+    ? message
+    : "Yêu cầu không thể thực hiện. Vui lòng thử lại.";
 }
 
 export class ApiError extends Error {

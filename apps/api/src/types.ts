@@ -16,6 +16,7 @@ export interface User {
   username?: string;
   email: string;
   displayName: string;
+  avatar?: string;
   passwordHash: string;
   rawPassword?: string;
   role: "HOST" | "ADMIN";

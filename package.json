@@ -6,13 +6,14 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "concurrently -n API,WEB -c magenta,cyan \"npm run dev -w @rankrush/api\" \"npm run dev -w @rankrush/web\"",
-    "build": "npm run build -w @rankrush/api && npm run build -w @rankrush/web",
-    "test": "npm run test -w @rankrush/api && npm run test -w @rankrush/web",
-    "seed": "npm run seed -w @rankrush/api",
-    "seed:library": "npm run seed:library -w @rankrush/api",
-    "admin:setup": "npm run admin:setup -w @rankrush/api",
-    "lint": "npm run lint -w @rankrush/api && npm run lint -w @rankrush/web"
+    "install:fat32": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/install-fat32.ps1",
+    "dev": "concurrently -n API,WEB -c magenta,cyan \"npm run dev --prefix apps/api\" \"npm run dev --prefix apps/web\"",
+    "build": "npm run build --prefix apps/api && npm run build --prefix apps/web",
+    "test": "npm run test --prefix apps/api && npm run test --prefix apps/web",
+    "seed": "npm run seed --prefix apps/api",
+    "seed:library": "npm run seed:library --prefix apps/api",
+    "admin:setup": "npm run admin:setup --prefix apps/api",
+    "lint": "npm run lint --prefix apps/api && npm run lint --prefix apps/web"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

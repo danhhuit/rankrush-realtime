@@ -36,4 +36,20 @@ describe("playerToken", () => {
       }).message,
     ).toBe("The PIN does not exist or has expired.");
   });
+
+  it("replaces corrupted server text with a proper Vietnamese message", () => {
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      value: {
+        getItem: (key: string) => (key === "rr_locale" ? "vi" : null),
+      },
+    });
+
+    expect(
+      new ApiError(409, {
+        code: "USERNAME_EXISTS",
+        message: "TÃªn Ä‘Äƒng nháº­p Ä‘Ã£ Ä‘Æ°á»£c sá»­ dá»¥ng.",
+      }).message,
+    ).toBe("Tên đăng nhập đã được sử dụng.");
+  });
 });

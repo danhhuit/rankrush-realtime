@@ -9,7 +9,7 @@ Theo phạm vi giao diện đã duyệt, trang gồm:
 - Quản lý người dùng và quyền Admin/Host.
 - Theo dõi, mở bảng điều khiển và dừng phòng chơi.
 - Nhật ký sự kiện phòng chơi và thao tác quản trị.
-- Thống kê Redis và các kiểu dữ liệu trong namespace RankRush.
+- Thống kê Redis, các kiểu dữ liệu và quản lý phiên bản dữ liệu RankRush.
 - Trợ lý tạo câu hỏi, lưu kết quả thành quiz nháp để kiểm tra.
 
 Trang không thêm các mục Câu hỏi & Bộ đề, Bảng xếp hạng, Báo cáo sau phiên và
@@ -63,17 +63,44 @@ Mọi endpoint dưới đây yêu cầu JWT Host có vai trò `ADMIN`. Server c�
 tài khoản từ Redis ở mỗi request để token cũ không giữ được quyền sau khi tài
 khoản bị hạ quyền hoặc tạm khóa.
 
-| Method | Endpoint               | Chức năng                                |
-| ------ | ---------------------- | ---------------------------------------- |
-| GET    | `/api/admin/overview`  | Số liệu và bản ghi gần đây               |
-| GET    | `/api/admin/users`     | Danh sách người dùng                     |
-| PATCH  | `/api/admin/users/:id` | Đổi vai trò hoặc trạng thái              |
-| GET    | `/api/admin/sessions`  | Danh sách phòng chơi                     |
-| GET    | `/api/admin/activity`  | Đọc Redis Streams                        |
-| GET    | `/api/admin/system`    | INFO, DBSIZE và thống kê namespace Redis |
+| Method | Endpoint                          | Chức năng                                |
+| ------ | --------------------------------- | ---------------------------------------- |
+| GET    | `/api/admin/overview`             | Số liệu và bản ghi gần đây               |
+| GET    | `/api/admin/users`                | Danh sách người dùng                     |
+| PATCH  | `/api/admin/users/:id`            | Đổi vai trò hoặc trạng thái              |
+| GET    | `/api/admin/sessions`             | Danh sách phòng chơi                     |
+| GET    | `/api/admin/activity`             | Đọc Redis Streams                        |
+| GET    | `/api/admin/system`               | INFO, DBSIZE và thống kê namespace Redis |
+| GET    | `/api/admin/backups`              | Danh sách các bản sao dữ liệu            |
+| POST   | `/api/admin/backups`              | Tạo một bản sao mới                      |
+| GET    | `/api/admin/backups/:id/download` | Tải tệp bản sao                          |
+| POST   | `/api/admin/backups/:id/restore`  | Phục hồi một phiên bản dữ liệu           |
+| DELETE | `/api/admin/backups/:id`          | Xóa một bản sao                          |
 
 Admin không thể tự hạ quyền hoặc tự khóa. Hệ thống cũng không cho phép hạ quyền
 hoặc khóa quản trị viên hoạt động cuối cùng.
+
+## Sao lưu và phục hồi dữ liệu
+
+Mục **Dữ liệu hệ thống** tạo snapshot của toàn bộ key `rankrush:*`. Snapshot dùng
+lệnh Redis `DUMP`/`RESTORE`, vì vậy giữ nguyên HASH, SET, LIST, STRING, ZSET,
+STREAM và thời gian hết hạn còn lại của từng key. Tệp được kiểm tra namespace,
+số key và checksum SHA-256 trước khi phục hồi.
+
+Mặc định các tệp nằm trong thư mục `backups/` ở gốc project và bị Git bỏ qua.
+Có thể đổi vị trí và giới hạn số key trong `.env`:
+
+```dotenv
+BACKUP_DIR=C:\rankrush-backups
+BACKUP_MAX_KEYS=50000
+```
+
+Trước mỗi lần phục hồi, API tự tạo một snapshot `PRE_RESTORE` của trạng thái
+hiện tại. Nếu thao tác phục hồi lỗi, hệ thống dùng snapshot này để tự hoàn tác.
+Không đóng API/Redis và không chạy `npm run seed` trong lúc backup hoặc restore.
+
+> Chức năng này phục hồi **dữ liệu ứng dụng trong Redis**, không hoàn tác mã
+> nguồn. Dùng Git branch/tag để quay lại phiên bản code.
 
 ## Theme và ngôn ngữ
 
