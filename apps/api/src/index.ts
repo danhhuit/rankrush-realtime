@@ -46,10 +46,15 @@ import {
 } from "./mailer.js";
 import { isUnsafeNickname } from "./nickname-filter.js";
 import { connectRedis, closeRedis, redis } from "./redis.js";
-import { calculateScore, normalizeText } from "./score.js";
+import { calculateScore } from "./score.js";
+import { isQuestionAnswerCorrect } from "./question-answer.js";
+import {
+  hasOnlinePlayers,
+  shouldEndEmptySession,
+} from "./session-presence.js";
 import {
   generateQuizQuestionsSmart,
-  getOllamaStatus,
+  getAiStatus,
 } from "./ollama-quiz-generator.js";
 import {
   buildReport,
@@ -367,11 +372,58 @@ const GAME_COUNTDOWN_MS = 4_000;
 const QUESTION_PREVIEW_MS = 5_000;
 const QUESTION_RESULT_MS = 5_000;
 const phaseTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const EMPTY_SESSION_GRACE_MS = 5_000;
+const emptySessionTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function clearPhaseTimer(sessionId: string) {
   const timer = phaseTimers.get(sessionId);
   if (timer) clearTimeout(timer);
   phaseTimers.delete(sessionId);
+}
+
+function clearEmptySessionTimer(sessionId: string) {
+  const timer = emptySessionTimers.get(sessionId);
+  if (timer) clearTimeout(timer);
+  emptySessionTimers.delete(sessionId);
+}
+
+function connectedPlayerPresence(players: Array<{ id: string }>) {
+  return players.map((player) => ({
+    online: Boolean(io.sockets.adapter.rooms.get(`player:${player.id}`)?.size),
+  }));
+}
+
+function scheduleEmptySessionEnd(
+  sessionId: string,
+  delay = EMPTY_SESSION_GRACE_MS,
+) {
+  clearEmptySessionTimer(sessionId);
+  const timer = setTimeout(async () => {
+    emptySessionTimers.delete(sessionId);
+    const result = await withPhaseLock(sessionId, async () => {
+      const [session, players] = await Promise.all([
+        getSession(sessionId),
+        listPlayers(sessionId),
+      ]);
+      if (
+        !session ||
+        !shouldEndEmptySession(session, connectedPlayerPresence(players))
+      )
+        return false;
+      clearPhaseTimer(sessionId);
+      await updateSession(sessionId, {
+        state: "ENDED",
+        endedAt: new Date().toISOString(),
+      });
+      io.to(`host:${sessionId}`).emit("session:empty", {
+        message: "Không còn người chơi trong phòng chơi",
+      });
+      await emitSnapshot("session:ended", sessionId);
+      return true;
+    });
+    if (result === null) scheduleEmptySessionEnd(sessionId, 1_000);
+  }, delay);
+  emptySessionTimers.set(sessionId, timer);
 }
 
 async function withPhaseLock<T>(
@@ -625,14 +677,22 @@ async function issueEmailCode(email: string, purpose: "register" | "reset") {
     await redis.del(codeKey, cooldownKey);
     throw error;
   }
+  const canUseDevelopmentCode =
+    config.NODE_ENV !== "production" && config.EMAIL_DEV_CODE_ENABLED;
+  if (!sent && !canUseDevelopmentCode) {
+    await redis.del(codeKey, cooldownKey);
+    throw Object.assign(
+      new Error("Chưa cấu hình SMTP để gửi mã xác nhận qua email."),
+      {
+        status: 503,
+        code: "EMAIL_NOT_CONFIGURED",
+      },
+    );
+  }
   return {
     sent,
     expiresIn: ttl,
-    ...(config.NODE_ENV !== "production" &&
-    config.EMAIL_DEV_CODE_ENABLED &&
-    !sent
-      ? { devCode: code }
-      : {}),
+    ...(canUseDevelopmentCode && !sent ? { devCode: code } : {}),
   };
 }
 
@@ -1722,23 +1782,36 @@ app.post(
         },
       );
     const { answer } = z
-      .object({ answer: z.string().max(300) })
+      .object({ answer: z.string().max(2000) })
       .parse(req.body);
-    const correct =
-      question.type === "TEXT"
-        ? question.acceptedAnswers.some(
-            (item) => normalizeText(item) === normalizeText(answer),
-          )
-        : question.correctOptionId === answer;
+    const correct = isQuestionAnswerCorrect(question, answer);
     res.json({
       correct,
       correctOptionId: question.correctOptionId,
       correctAnswer:
         question.type === "TEXT"
           ? question.acceptedAnswers[0] || ""
+          : question.type === "MULTIPLE_CHOICE"
+            ? question.options
+                .filter((option) =>
+                  question.acceptedAnswers.includes(option.id),
+                )
+                .map((option) => option.text)
+                .join(", ")
+            : question.type === "ORDERING"
+              ? question.acceptedAnswers
+                  .map(
+                    (id) =>
+                      question.options.find((option) => option.id === id)?.text,
+                  )
+                  .filter(Boolean)
+                  .join(" → ")
+              : question.type === "RANGE"
+                ? `${question.correctOptionId} ± ${question.acceptedAnswers[0] || "0"}`
           : question.options.find(
               (option) => option.id === question.correctOptionId,
             )?.text || "",
+      acceptedAnswers: question.acceptedAnswers,
       explanation: question.explanation,
     });
   }),
@@ -1819,7 +1892,7 @@ app.post(
 app.get(
   "/api/ai/status",
   requireHost,
-  asyncRoute(async (_req, res) => res.json(await getOllamaStatus())),
+  asyncRoute(async (_req, res) => res.json(await getAiStatus())),
 );
 app.get("/api/ai/csv-template", (_req, res) => {
   res
@@ -1960,18 +2033,35 @@ app.post(
       provider: generation.provider,
       model: generation.model,
       warning: "warning" in generation ? generation.warning : undefined,
+      reviewed: "reviewed" in generation ? generation.reviewed : false,
+      averageQualityScore:
+        "averageQualityScore" in generation
+          ? generation.averageQualityScore
+          : undefined,
+      regeneratedCount:
+        "regeneratedCount" in generation
+          ? generation.regeneratedCount
+          : undefined,
     });
   }),
 );
 
 const questionBaseInput = z.object({
-  type: z.enum(["SINGLE_CHOICE", "TRUE_FALSE", "TEXT"]),
+  type: z.enum([
+    "SINGLE_CHOICE",
+    "MULTIPLE_CHOICE",
+    "TRUE_FALSE",
+    "TEXT",
+    "ORDERING",
+    "RANGE",
+    "INFO",
+  ]),
   prompt: z.string().trim().min(3).max(500),
   options: z
     .array(
       z.object({ id: z.string(), text: z.string().trim().min(1).max(200) }),
     )
-    .max(6)
+    .max(10)
     .default([]),
   correctOptionId: z.string().default(""),
   acceptedAnswers: z
@@ -1991,6 +2081,7 @@ const questionInput = questionBaseInput.superRefine((question, context) => {
       path: ["options"],
       message: "MÃ£ lá»±a chá»n khÃ´ng Ä‘Æ°á»£c trÃ¹ng nhau.",
     });
+  if (question.type === "INFO") return;
   if (question.type === "TEXT") {
     if (!question.acceptedAnswers.length)
       context.addIssue({
@@ -2001,13 +2092,40 @@ const questionInput = questionBaseInput.superRefine((question, context) => {
       });
     return;
   }
+  if (question.type === "RANGE") {
+    const minimum = Number(question.options[0]?.text);
+    const maximum = Number(question.options[1]?.text);
+    const target = Number(question.correctOptionId);
+    const tolerance = Number(question.acceptedAnswers[0]);
+    if (
+      question.options.length !== 2 ||
+      !Number.isFinite(minimum) ||
+      !Number.isFinite(maximum) ||
+      minimum >= maximum ||
+      !Number.isFinite(target) ||
+      target < minimum ||
+      target > maximum ||
+      !Number.isFinite(tolerance) ||
+      tolerance < 0
+    )
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["options"],
+        message:
+          "Khoảng số cần có giá trị nhỏ nhất, lớn nhất, đáp án và sai số hợp lệ.",
+      });
+    return;
+  }
   if (question.options.length < 2)
     context.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["options"],
       message: "CÃ¢u há»i lá»±a chá»n pháº£i cÃ³ Ã­t nháº¥t hai phÆ°Æ¡ng Ã¡n.",
     });
-  if (!optionIds.includes(question.correctOptionId))
+  if (
+    ["SINGLE_CHOICE", "TRUE_FALSE"].includes(question.type) &&
+    !optionIds.includes(question.correctOptionId)
+  )
     context.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["correctOptionId"],
@@ -2018,6 +2136,26 @@ const questionInput = questionBaseInput.superRefine((question, context) => {
       code: z.ZodIssueCode.custom,
       path: ["options"],
       message: "CÃ¢u há»i ÄÃºng/Sai pháº£i cÃ³ Ä‘Ãºng hai lá»±a chá»n.",
+    });
+  if (
+    question.type === "MULTIPLE_CHOICE" &&
+    (!question.acceptedAnswers.length ||
+      question.acceptedAnswers.some((id) => !optionIds.includes(id)))
+  )
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["acceptedAnswers"],
+      message: "Hãy chọn ít nhất một đáp án đúng trong danh sách.",
+    });
+  if (
+    question.type === "ORDERING" &&
+    (question.acceptedAnswers.length !== optionIds.length ||
+      !optionIds.every((id) => question.acceptedAnswers.includes(id)))
+  )
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["acceptedAnswers"],
+      message: "Thứ tự đúng phải bao gồm đầy đủ các phương án.",
     });
 });
 
@@ -2336,9 +2474,10 @@ app.post(
           status: 409,
         },
       );
-    if ((await redis.scard(keys.sessionPlayers(s.id))) === 0)
+    const players = await listPlayers(s.id);
+    if (!hasOnlinePlayers(connectedPlayerPresence(players)))
       throw Object.assign(
-        new Error("Cáº§n Ã­t nháº¥t má»™t ngÆ°á»i chÆ¡i Ä‘á»ƒ báº¯t Ä‘áº§u."),
+        new Error("Không còn người chơi trong phòng chơi"),
         {
           status: 409,
           code: "SESSION_EMPTY",
@@ -2588,7 +2727,7 @@ app.post(
     const data = z
       .object({
         questionId: z.string(),
-        answer: z.string().max(300),
+        answer: z.string().max(2000),
         responseMs: z.number().int().min(0).max(300000).optional(),
       })
       .parse(req.body);
@@ -2623,12 +2762,7 @@ app.post(
           code: "QUESTION_TIMEOUT",
         },
       );
-    const correct =
-      q.type === "TEXT"
-        ? q.acceptedAnswers.some(
-            (x) => normalizeText(x) === normalizeText(data.answer),
-          )
-        : q.correctOptionId === data.answer;
+    const correct = isQuestionAnswerCorrect(q, data.answer);
     const serverResponseMs = Math.max(0, elapsedMs);
     const points = calculateScore(
       q.timeLimitSec,
@@ -2760,6 +2894,7 @@ io.on("connection", (socket) => {
       socket.join(`session:${sessionId}`);
       socket.join(`player:${claims.sub}`);
       await redis.hset(keys.player(sessionId, claims.sub), "online", "true");
+      clearEmptySessionTimer(sessionId);
       await emitSnapshot("lobby:updated", sessionId);
     }
     socket.emit(
@@ -2785,6 +2920,7 @@ io.on("connection", (socket) => {
           "false",
         );
         await emitSnapshot("lobby:updated", claims.sessionId);
+        scheduleEmptySessionEnd(claims.sessionId);
       }
     }
   });

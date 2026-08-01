@@ -1,6 +1,14 @@
 import { nanoid } from "nanoid";
 import { z } from "zod";
+import type {
+  QuizGenerationInput,
+  QuizGenerationResult,
+} from "./ai-provider.js";
 import { config } from "./config.js";
+import {
+  generateWithGemini,
+  getGeminiStatus,
+} from "./gemini-quiz-generator.js";
 import {
   generateQuizQuestions,
   type GeneratedQuestion,
@@ -35,13 +43,6 @@ const tagsResponseSchema = z.object({
     }),
   ),
 });
-
-export type QuizGenerationResult = {
-  questions: GeneratedQuestion[];
-  provider: "OLLAMA" | "LOCAL_FALLBACK";
-  model: string;
-  warning?: string;
-};
 
 const baseUrl = () => config.OLLAMA_BASE_URL.replace(/\/$/, "");
 
@@ -95,14 +96,7 @@ function toQuestions(
   });
 }
 
-async function generateWithOllama(input: {
-  subject: string;
-  context?: string;
-  sourceText?: string;
-  count: number;
-  language?: "vi" | "en";
-  difficulty?: "EASY" | "MEDIUM" | "HARD";
-}) {
+export async function generateWithOllama(input: QuizGenerationInput) {
   const schema = outputSchema(input.count);
   const source = input.sourceText?.replace(/\s+/g, " ").trim().slice(0, 24_000);
   const groundingRule = source
@@ -217,40 +211,77 @@ export async function getOllamaStatus() {
   }
 }
 
-export async function generateQuizQuestionsSmart(input: {
-  subject: string;
-  context?: string;
-  sourceText?: string;
-  count: number;
-  language?: "vi" | "en";
-  difficulty?: "EASY" | "MEDIUM" | "HARD";
-  requireAi?: boolean;
-}): Promise<QuizGenerationResult> {
-  if (config.OLLAMA_ENABLED) {
+export async function getAiStatus() {
+  const [gemini, ollama] = await Promise.all([
+    getGeminiStatus(),
+    getOllamaStatus(),
+  ]);
+  const primary = config.AI_PROVIDER === "GEMINI" ? gemini : ollama;
+  const reachable = Boolean(primary.reachable);
+  return {
+    ...primary,
+    provider: config.AI_PROVIDER,
+    modelInstalled:
+      config.AI_PROVIDER === "GEMINI"
+        ? reachable
+        : Boolean("modelInstalled" in primary && primary.modelInstalled),
+    models:
+      config.AI_PROVIDER === "GEMINI"
+        ? [config.GEMINI_MODEL]
+        : "models" in primary
+          ? primary.models
+          : [],
+    reviewEnabled: config.AI_REVIEW_ENABLED,
+    reviewProvider: config.AI_REVIEW_PROVIDER,
+    minQualityScore: config.AI_MIN_QUALITY_SCORE,
+    providers: { gemini, ollama },
+  };
+}
+
+export async function generateQuizQuestionsSmart(
+  input: QuizGenerationInput,
+): Promise<QuizGenerationResult> {
+  const warnings: string[] = [];
+  const primary = input.providerOverride || config.AI_PROVIDER;
+
+  if (primary === "GEMINI") {
+    try {
+      return await generateWithGemini(input);
+    } catch (error) {
+      const message = (error as Error).message;
+      warnings.push(`Gemini: ${message}`);
+      console.warn(`[GEMINI_FALLBACK] ${message}`);
+    }
+  }
+
+  const shouldTryOllama =
+    primary === "OLLAMA" ||
+    (primary === "GEMINI" && config.AI_FALLBACK_PROVIDER === "OLLAMA");
+  if (shouldTryOllama && config.OLLAMA_ENABLED) {
     try {
       return {
         questions: await generateWithOllama(input),
         provider: "OLLAMA",
         model: config.OLLAMA_MODEL,
+        warning: warnings.length ? warnings.join(" | ") : undefined,
       };
     } catch (error) {
-      const warning = (error as Error).message;
-      console.warn(`[OLLAMA_FALLBACK] ${warning}`);
-      if (input.requireAi) throw error;
-      return {
-        questions: generateQuizQuestions(input),
-        provider: "LOCAL_FALLBACK",
-        model: config.OLLAMA_MODEL,
-        warning,
-      };
+      const message = (error as Error).message;
+      warnings.push(`Ollama: ${message}`);
+      console.warn(`[OLLAMA_FALLBACK] ${message}`);
     }
   }
+
   if (input.requireAi)
-    throw new Error("Dịch vụ AI cục bộ đang bị tắt trong cấu hình.");
+    throw new Error(
+      warnings.join(" | ") || "Không có dịch vụ AI nào đang sẵn sàng.",
+    );
   return {
     questions: generateQuizQuestions(input),
     provider: "LOCAL_FALLBACK",
-    model: config.OLLAMA_MODEL,
-    warning: "Ollama đã bị tắt bằng cấu hình OLLAMA_ENABLED.",
+    model: primary === "GEMINI" ? config.GEMINI_MODEL : config.OLLAMA_MODEL,
+    warning:
+      warnings.join(" | ") ||
+      "Không có provider AI khả dụng; đang dùng bộ sinh cục bộ.",
   };
 }

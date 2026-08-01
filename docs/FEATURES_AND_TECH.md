@@ -34,7 +34,8 @@ giao diện, dữ liệu và mã nguồn độc lập.
 3. Quên mật khẩu qua mã email dùng một lần, mật khẩu mới và xác nhận mật khẩu.
 4. Dashboard tổng quan, Quiz của tôi, Thư viện, Báo cáo, Bảng xếp hạng và Cài đặt.
 5. CRUD quiz/câu hỏi; hỗ trợ nháp/công khai, nhân bản, sắp thứ tự và tìm kiếm.
-6. Câu hỏi một lựa chọn, đúng/sai và câu trả lời văn bản.
+6. Câu hỏi một lựa chọn, nhiều lựa chọn, đúng/sai, văn bản, sắp xếp, khoảng số
+   và slide thông tin.
 7. Tạo phòng từ quiz đã xuất bản; PIN được giữ duy nhất bằng Redis `SET NX EX`.
 8. QR dùng địa chỉ LAN hoặc `PUBLIC_WEB_URL`; Host có thể ẩn PIN, QR và link.
 9. Lobby hiển thị avatar, nickname và số người realtime; Host có thể loại người
@@ -52,17 +53,16 @@ giao diện, dữ liệu và mã nguồn độc lập.
 
 1. Nhận chủ đề, PDF có văn bản hoặc CSV theo mẫu; tệp tối đa 10 MB.
 2. Host chọn tên quiz, danh mục, số lượng 3–15 câu và nhập mô tả/yêu cầu chi tiết.
-3. Backend trích xuất PDF, đưa tài liệu và mô tả vào prompt, yêu cầu AI tự xác
-   định đáp án đúng và trả output theo JSON Schema.
-4. Zod kiểm tra lại cấu trúc, bốn lựa chọn khác nhau, `correctIndex`, timer và lời
-   giải. Quiz không hợp lệ không được lưu.
-5. Nếu AI chưa sẵn sàng, PDF/chủ đề trả lỗi có hướng dẫn thay vì tạo câu hỏi mẫu
-   chung chung. Host vẫn có thể tải mẫu và nhập CSV không cần AI.
+3. Backend trích xuất PDF, lập blueprint đa dạng dạng câu/mức nhận thức và yêu
+   cầu Gemini trả output theo JSON Schema.
+4. Zod kiểm tra cấu trúc; reviewer độc lập chấm căn cứ nguồn, đáp án, độ rõ ràng
+   và phương án nhiễu. Câu dưới ngưỡng hoặc gần trùng được tạo lại một lượt.
+5. Provider fallback theo thứ tự Gemini → Ollama → generator local. Host vẫn có
+   thể tải mẫu và nhập CSV không cần AI.
 6. CSV hỗ trợ `SINGLE_CHOICE`, `TRUE_FALSE`, `TEXT`; backend kiểm tra từng dòng,
    đáp án A–F/nội dung đúng, accepted answers và giới hạn tối đa 100 câu.
 7. Quiz tự động luôn được lưu dạng nháp và mở trong Quiz Editor để rà soát.
-8. Model mặc định là `qwen2.5:3b`; không cần API key đám mây. Tên model/provider
-   không hiển thị trên giao diện sản phẩm.
+8. Model chính là `gemini-3.6-flash`; Ollama `qwen2.5:3b` là dự phòng cục bộ.
 9. `GET /api/ai/status` phục vụ kiểm tra nội bộ; `GET /api/ai/csv-template` tải
    tệp mẫu CSV.
 
@@ -167,7 +167,7 @@ Redis 7.4
 | JWT + bcrypt       | Xác thực      | Tách Host/Player, mật khẩu không lưu plaintext                |
 | Nodemailer         | Email         | Hỗ trợ SMTP Gmail, Outlook, Mailgun, Brevo và provider khác   |
 | Multer + pdf-parse | PDF/CSV       | Giới hạn upload, trích văn bản và kiểm tra tệp ở backend      |
-| Ollama + Qwen 2.5  | AI cục bộ     | Không cần API key, dữ liệu ở máy, phù hợp tiếng Việt          |
+| Gemini + Ollama    | Sinh quiz AI  | Structured output, reviewer chất lượng và fallback cục bộ     |
 | JSON Schema + Zod  | Output AI     | Giảm lỗi cấu trúc và chặn quiz không hợp lệ                   |
 | @2toad/profanity   | Moderation    | Từ điển đa ngôn ngữ và Unicode word boundaries                |
 | Vitest + Supertest | Test          | Test nhanh cho hàm, API và lỗi hồi quy                        |
@@ -216,8 +216,8 @@ Redis 7.4
 - SMTP dùng một tài khoản gửi cấu hình bởi `SMTP_USER`/`SMTP_PASS`; địa chỉ nhận
   luôn lấy động từ email đăng ký hoặc email quên mật khẩu. App Password không
   được sinh theo người nhận và không được commit vào Git.
-- Development có thể trả `devCode`; production phải tắt
-  `EMAIL_DEV_CODE_ENABLED` và cấu hình SMTP thật.
+- Mã xác nhận được gửi trực tiếp qua SMTP. Đặt
+  `EMAIL_DEV_CODE_ENABLED=false` và không hiển thị mã thử trên giao diện.
 
 ## 9. Kiểm duyệt biệt danh
 

@@ -1,5 +1,12 @@
 export type QuizStatus = "DRAFT" | "PUBLISHED" | "ARCHIVED";
-export type QuestionType = "SINGLE_CHOICE" | "TRUE_FALSE" | "TEXT";
+export type QuestionType =
+  | "SINGLE_CHOICE"
+  | "MULTIPLE_CHOICE"
+  | "TRUE_FALSE"
+  | "TEXT"
+  | "ORDERING"
+  | "RANGE"
+  | "INFO";
 export type SessionState =
   | "LOBBY"
   | "GAME_COUNTDOWN"

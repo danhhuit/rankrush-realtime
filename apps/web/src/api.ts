@@ -19,6 +19,9 @@ const vietnameseErrors: Record<string, string> = {
   EMAIL_EXISTS: "Địa chỉ email đã được sử dụng.",
   EMAIL_CODE_INVALID: "Mã xác nhận email không đúng hoặc đã hết hạn.",
   EMAIL_CODE_RATE_LIMITED: "Vui lòng chờ trước khi yêu cầu gửi lại mã.",
+  EMAIL_NOT_CONFIGURED: "Chưa cấu hình SMTP để gửi mã xác nhận qua email.",
+  EMAIL_SEND_FAILED:
+    "Không thể gửi email xác nhận. Vui lòng kiểm tra cấu hình SMTP.",
   FORBIDDEN: "Bạn không có quyền thực hiện thao tác này.",
   LAST_ADMIN_PROTECTED:
     "Hệ thống phải còn ít nhất một quản trị viên đang hoạt động.",
@@ -57,6 +60,8 @@ const englishErrors: Record<string, string> = {
   EMAIL_CODE_INVALID: "The email verification code is invalid or has expired.",
   EMAIL_CODE_RATE_LIMITED:
     "Please wait 60 seconds before requesting another code.",
+  EMAIL_NOT_CONFIGURED:
+    "SMTP is not configured, so the verification code cannot be emailed.",
   EMAIL_SEND_FAILED:
     "The verification email could not be sent. Check the SMTP configuration.",
   FORBIDDEN: "You do not have permission to perform this action.",

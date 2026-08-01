@@ -44,6 +44,7 @@ describe("generateQuizQuestionsSmart", () => {
       count: 3,
       language: "en",
       difficulty: "HARD",
+      providerOverride: "OLLAMA",
     });
     expect(result.provider).toBe("OLLAMA");
     expect(result.questions).toHaveLength(3);
@@ -64,6 +65,7 @@ describe("generateQuizQuestionsSmart", () => {
     const result = await generateQuizQuestionsSmart({
       subject: "Redis leaderboard",
       count: 3,
+      providerOverride: "OLLAMA",
     });
     expect(result.provider).toBe("LOCAL_FALLBACK");
     expect(result.questions).toHaveLength(3);

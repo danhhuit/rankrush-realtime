@@ -86,12 +86,23 @@ import { io, type Socket } from "socket.io-client";
 import { ApiError, hostToken, playerToken, request } from "./api";
 import AdminPage from "./AdminPage";
 import PlayerMusic from "./PlayerMusic";
+import QuestionTypePicker, {
+  QuestionTypeGrid,
+} from "./QuestionTypePicker";
+import QuestionVoice from "./QuestionVoice";
 import {
   AvatarImageError,
   createAvatarDataUrl,
 } from "./avatar-image";
 import { AvatarCustomizer, defaultAvatar, PlayerAvatar } from "./PlayerAvatar";
+import { createClientId } from "./client-id";
 import { usePreferences } from "./preferences";
+import {
+  isRevealedAnswerCorrect,
+  makeBlankQuestion,
+  parseAnswerList,
+  questionTypeLabel,
+} from "./question-tools";
 import type {
   LeaderboardEntry,
   Option,
@@ -301,6 +312,27 @@ function contentLabel(value: string, tr: (vi: string, en: string) => string) {
 function cx(...v: Array<string | false | undefined | null>) {
   return v.filter(Boolean).join(" ");
 }
+
+async function copyText(value: string) {
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return;
+    } catch {}
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  textarea.style.pointerEvents = "none";
+  document.body.appendChild(textarea);
+  textarea.select();
+  textarea.setSelectionRange(0, value.length);
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) throw new Error("COPY_FAILED");
+}
 function displayCoverColor(color: string) {
   return ["#6c5ce7", "#5b5bd6", "#7868f4", "#5647d7"].includes(
     color.toLowerCase(),
@@ -412,6 +444,7 @@ function ConfirmationProvider({ children }: { children: ReactNode }) {
                   {dialog.title || tr("Xác nhận thao tác", "Confirm action")}
                 </h2>
               </div>
+            </div>
             <p id="confirm-message">{dialog.message}</p>
             <div className="confirm-dialog-actions">
               <button
@@ -422,7 +455,6 @@ function ConfirmationProvider({ children }: { children: ReactNode }) {
               >
                 {tr("Không", "No")}
               </button>
-              </div>
               <button
                 type="button"
                 className={cx(
@@ -558,7 +590,6 @@ function PreferenceControls({ compact = false }: { compact?: boolean }) {
         aria-label={t("appearance")}
       >
         {theme === "dark" ? <Moon /> : <Sun />}
-        {compact && <span>{theme === "dark" ? t("darkTheme") : t("lightTheme")}</span>}
       </button>
     </div>
   );
@@ -1110,10 +1141,7 @@ function Home() {
                   "Play free with up to 300 participants",
                 )}
               </p>
-              <Link
-                className="promo-button green"
-                to={hostToken() ? "/dashboard" : "/register"}
-              >
+              <Link className="promo-button green" to="/editor/new">
                 <Edit3 /> {tr("Trình tạo quiz", "Quiz editor")}
               </Link>
             </div>
@@ -1328,7 +1356,6 @@ function Auth({ mode }: { mode: "login" | "register" }) {
   });
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [devCode, setDevCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
   const [resendIn, setResendIn] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -1364,22 +1391,16 @@ function Auth({ mode }: { mode: "login" | "register" }) {
       });
       setCodeSent(true);
       setResendIn(60);
-      setDevCode(result.devCode || "");
       setNotice(
         result.sent
           ? tr(
               "Đã gửi mã 6 số đến email của bạn.",
               "A 6-digit code was sent to your email.",
             )
-          : result.devCode
-            ? tr(
-                "SMTP chưa cấu hình: mã thử nghiệm hiển thị bên dưới.",
-                "SMTP is not configured: the test code is shown below.",
-              )
-            : tr(
-                "SMTP chưa cấu hình và máy chủ đang ẩn mã thử nghiệm.",
-                "SMTP is not configured and the server is hiding test codes.",
-              ),
+          : tr(
+              "Không thể gửi email. Vui lòng kiểm tra lại cấu hình SMTP.",
+              "The email could not be sent. Check the SMTP configuration.",
+            ),
       );
     } catch (e) {
       setError((e as Error).message);
@@ -1649,11 +1670,6 @@ function Auth({ mode }: { mode: "login" | "register" }) {
                         : tr("Gửi mã", "Send code")}
                   </button>
                 </div>
-                {devCode && (
-                  <div className="dev-code">
-                    {tr("Mã phát triển", "Development code")}: <b>{devCode}</b>
-                  </div>
-                )}
               </>
             )}
             {mode === "login" && (
@@ -1688,13 +1704,6 @@ function Auth({ mode }: { mode: "login" | "register" }) {
                 : tr("Đăng nhập", "Log in")}
             </Link>
           </p>
-          {mode === "login" && (
-            <div className="demo-account">
-              <b>{tr("Tài khoản Admin", "Admin account")}</b>
-              <span>admin</span>
-              <span>@dmin123</span>
-            </div>
-          )}
         </div>
       </div>
     </Page>
@@ -1710,7 +1719,6 @@ function ForgotPassword() {
     password: "",
     confirmPassword: "",
   });
-  const [devCode, setDevCode] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [resendIn, setResendIn] = useState(0);
@@ -1723,11 +1731,10 @@ function ForgotPassword() {
     return () => window.clearInterval(timer);
   }, [resendIn]);
   async function requestResetCode() {
-    const result = await request<{ devCode?: string }>(
-      "/auth/forgot-password",
-      { method: "POST", body: JSON.stringify({ email: form.email }) },
-    );
-    setDevCode(result.devCode || "");
+    await request("/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email: form.email }),
+    });
     setResendIn(60);
   }
   async function submit(event: FormEvent) {
@@ -1827,11 +1834,6 @@ function ForgotPassword() {
                       placeholder="000000"
                     />
                   </label>
-                  {devCode && (
-                    <div className="dev-code">
-                      {tr("Mã demo", "Demo code")}: <b>{devCode}</b>
-                    </div>
-                  )}
                   <button
                     type="button"
                     className="text-button"
@@ -2835,14 +2837,16 @@ function SettingsPage() {
                     className="avatar-preview"
                   />
                 )}
-                <input type="file" accept="image/*" onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    const reader = new FileReader();
-                    reader.onload = (ev) => setAvatarPreview(ev.target?.result as string);
-                    reader.readAsDataURL(file);
-                  }
-                }} />
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  disabled={avatarProcessing}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    void selectAvatar(file);
+                  }}
+                />
                 <span>{tr("T\u1ea3i \u1ea3nh l\u00ean","Upload photo")}</span>
 
               </div>
@@ -3005,6 +3009,8 @@ function AiCreatePage() {
     model: string;
     modelInstalled: boolean;
     models: string[];
+    provider?: "GEMINI" | "OLLAMA";
+    reviewEnabled?: boolean;
   } | null>(null);
   useEffect(() => {
     void request<{
@@ -3013,6 +3019,8 @@ function AiCreatePage() {
       model: string;
       modelInstalled: boolean;
       models: string[];
+      provider?: "GEMINI" | "OLLAMA";
+      reviewEnabled?: boolean;
     }>("/ai/status", { token: hostToken() })
       .then(setAiStatus)
       .catch(() =>
@@ -3084,9 +3092,12 @@ function AiCreatePage() {
         quiz: Quiz;
         questionCount: number;
         source: "SUBJECT" | "PDF" | "CSV";
-        provider: "OLLAMA" | "LOCAL_FALLBACK" | "CSV";
+        provider: "GEMINI" | "OLLAMA" | "LOCAL_FALLBACK" | "CSV";
         model: string;
         warning?: string;
+        reviewed?: boolean;
+        averageQualityScore?: number;
+        regeneratedCount?: number;
       }>("/ai/generate-quiz", {
         method: "POST",
         token: hostToken(),
@@ -3101,10 +3112,15 @@ function AiCreatePage() {
               `Đã nhập và kiểm tra ${result.questionCount} câu hỏi từ CSV.`,
               `Imported and validated ${result.questionCount} questions from CSV.`,
             )
-          : tr(
-              `AI đã tạo ${result.questionCount} câu hỏi. Hãy kiểm tra lại đáp án trước khi xuất bản.`,
-              `AI created ${result.questionCount} questions. Review the answers before publishing.`,
-            ),
+          : result.reviewed
+            ? tr(
+                `AI ${result.model} đã tạo và kiểm định ${result.questionCount} câu hỏi${result.averageQualityScore ? ` · chất lượng ${result.averageQualityScore}/100` : ""}${result.regeneratedCount ? ` · đã tạo lại ${result.regeneratedCount} câu` : ""}.`,
+                `AI ${result.model} generated and reviewed ${result.questionCount} questions${result.averageQualityScore ? ` · quality ${result.averageQualityScore}/100` : ""}${result.regeneratedCount ? ` · regenerated ${result.regeneratedCount}` : ""}.`,
+              )
+            : tr(
+                `AI ${result.model} đã tạo ${result.questionCount} câu hỏi. Hãy kiểm tra lại đáp án trước khi xuất bản.`,
+                `AI ${result.model} created ${result.questionCount} questions. Review the answers before publishing.`,
+              ),
       );
       await new Promise<void>((resolve) => window.setTimeout(resolve, 250));
       nav(`/editor/${result.quiz.id}`);
@@ -3209,8 +3225,12 @@ function AiCreatePage() {
                           )
                         : aiStatus.reachable && aiStatus.modelInstalled
                           ? tr(
-                              "Đã sẵn sàng · dữ liệu được xử lý trên máy",
-                              "Ready · data is processed on this device",
+                              aiStatus.provider === "GEMINI"
+                                ? "Gemini đã sẵn sàng · có kiểm định chất lượng tự động"
+                                : "Ollama đã sẵn sàng · dữ liệu được xử lý trên máy",
+                              aiStatus.provider === "GEMINI"
+                                ? "Gemini is ready · automatic quality review enabled"
+                                : "Ollama is ready · data is processed on this device",
                             )
                           : tr(
                               "AI chưa sẵn sàng · bạn vẫn có thể nhập bằng CSV",
@@ -3478,6 +3498,7 @@ function Editor() {
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState("");
+  const [showTypePicker, setShowTypePicker] = useState(false);
   useEffect(() => {
     request<{ quiz: Quiz; questions: Question[] }>(`/quizzes/${id}?editor=1`, {
       token,
@@ -3545,8 +3566,8 @@ function Editor() {
     }
   }
   function blankQuestion(): Omit<Question, "id" | "quizId"> {
-    const a = { id: crypto.randomUUID(), text: tr("Đáp án A", "Answer A") },
-      b = { id: crypto.randomUUID(), text: tr("Đáp án B", "Answer B") };
+    const a = { id: createClientId(), text: tr("Đáp án A", "Answer A") },
+      b = { id: createClientId(), text: tr("Đáp án B", "Answer B") };
     return {
       type: "SINGLE_CHOICE",
       prompt: tr("Câu hỏi mới", "New question"),
@@ -3559,14 +3580,15 @@ function Editor() {
       explanation: "",
     };
   }
-  async function addQuestion() {
+  async function addQuestion(type: Question["type"]) {
     const q = await request<Question>(`/quizzes/${quiz!.id}/questions`, {
       method: "POST",
       token,
-      body: JSON.stringify(blankQuestion()),
+      body: JSON.stringify(makeBlankQuestion(type, tr, questions.length)),
     });
     setQuestions([...questions, q]);
     setSelected(questions.length);
+    setShowTypePicker(false);
     toast.show(tr("Đã thêm câu hỏi.", "Question added."));
   }
   async function saveQuestion(q: Question) {
@@ -3667,7 +3689,10 @@ function Editor() {
         <aside className="question-list">
           <div className="question-list-head">
             <b>{tr("Câu hỏi", "Questions")}</b>
-            <button className="icon-button" onClick={() => void addQuestion()}>
+            <button
+              className="icon-button"
+              onClick={() => setShowTypePicker(true)}
+            >
               <Plus />
             </button>
           </div>
@@ -3681,11 +3706,7 @@ function Editor() {
                 <div>
                   <b>{q.prompt}</b>
                   <small>
-                    {q.type === "TEXT"
-                      ? tr("Nhập văn bản", "Text answer")
-                      : q.type === "TRUE_FALSE"
-                        ? tr("Đúng / Sai", "True / False")
-                        : tr("Trắc nghiệm", "Multiple choice")}{" "}
+                    {questionTypeLabel(q.type, tr)}{" "}
                     • {q.timeLimitSec}s
                   </small>
                 </div>
@@ -3710,7 +3731,10 @@ function Editor() {
               </span>
             </div>
           ))}
-          <button className="add-question" onClick={() => void addQuestion()}>
+          <button
+            className="add-question"
+            onClick={() => setShowTypePicker(true)}
+          >
             <Plus />
             {tr("Thêm câu hỏi", "Add question")}
           </button>
@@ -3736,7 +3760,7 @@ function Editor() {
               action={
                 <button
                   className="button button-primary"
-                  onClick={() => void addQuestion()}
+                  onClick={() => setShowTypePicker(true)}
                 >
                   <Plus />
                   {tr("Thêm câu hỏi", "Add question")}
@@ -3829,6 +3853,36 @@ function Editor() {
           </button>
         </aside>
       </div>
+      {showTypePicker && (
+        <div
+          className="modal-backdrop question-type-modal"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target) setShowTypePicker(false);
+          }}
+        >
+          <section className="question-type-modal-card" role="dialog" aria-modal>
+            <div className="question-type-modal-head">
+              <div>
+                <span className="eyebrow">
+                  {tr("THÊM SLIDE", "ADD SLIDE")}
+                </span>
+                <h2>{tr("Chọn dạng câu hỏi", "Choose a question type")}</h2>
+              </div>
+              <button
+                className="icon-button"
+                onClick={() => setShowTypePicker(false)}
+              >
+                <X />
+              </button>
+            </div>
+            <QuestionTypeGrid
+              tr={tr}
+              onSelect={(type) => void addQuestion(type)}
+            />
+          </section>
+        </div>
+      )}
       {toast.node}
     </div>
   );
@@ -3880,22 +3934,60 @@ function QuestionForm({
     });
   }
   function addOption() {
-    if (q.options.length >= 6) return;
+    if (q.options.length >= 10) return;
+    const nextOption = {
+      id: createClientId(),
+      text: `${tr("Đáp án", "Answer")} ${String.fromCharCode(65 + q.options.length)}`,
+    };
     onChange({
       ...q,
-      options: [
-        ...q.options,
-        {
-          id: crypto.randomUUID(),
-          text: `${tr("Đáp án", "Answer")} ${String.fromCharCode(65 + q.options.length)}`,
-        },
-      ],
+      options: [...q.options, nextOption],
+      acceptedAnswers:
+        q.type === "ORDERING"
+          ? [...q.acceptedAnswers, nextOption.id]
+          : q.acceptedAnswers,
+    });
+  }
+  function toggleCorrectOption(id: string) {
+    if (q.type !== "MULTIPLE_CHOICE") {
+      onChange({ ...q, correctOptionId: id });
+      return;
+    }
+    onChange({
+      ...q,
+      acceptedAnswers: q.acceptedAnswers.includes(id)
+        ? q.acceptedAnswers.filter((value) => value !== id)
+        : [...q.acceptedAnswers, id],
+    });
+  }
+  function moveOption(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= q.options.length) return;
+    const options = [...q.options];
+    [options[index], options[target]] = [options[target]!, options[index]!];
+    onChange({
+      ...q,
+      options,
+      acceptedAnswers:
+        q.type === "ORDERING"
+          ? options.map((option) => option.id)
+          : q.acceptedAnswers,
     });
   }
   function changeType(type: Question["type"]) {
+    const blank = makeBlankQuestion(type, tr, q.order);
+    onChange({
+      ...q,
+      ...blank,
+      prompt: q.prompt,
+      explanation: q.explanation,
+      timeLimitSec: q.timeLimitSec,
+      basePoints: q.basePoints,
+    });
+    return;
     if (type === "TRUE_FALSE") {
-      const truth = { id: crypto.randomUUID(), text: tr("Đúng", "True") };
-      const falsity = { id: crypto.randomUUID(), text: tr("Sai", "False") };
+      const truth = { id: createClientId(), text: tr("Đúng", "True") };
+      const falsity = { id: createClientId(), text: tr("Sai", "False") };
       onChange({
         ...q,
         type,
@@ -3918,8 +4010,8 @@ function QuestionForm({
       q.type === "SINGLE_CHOICE" && q.options.length >= 2
         ? q.options
         : [
-            { id: crypto.randomUUID(), text: tr("Đáp án A", "Answer A") },
-            { id: crypto.randomUUID(), text: tr("Đáp án B", "Answer B") },
+            { id: createClientId(), text: tr("Đáp án A", "Answer A") },
+            { id: createClientId(), text: tr("Đáp án B", "Answer B") },
           ];
     onChange({
       ...q,
@@ -3941,8 +4033,14 @@ function QuestionForm({
           <option value="SINGLE_CHOICE">
             {tr("Trắc nghiệm", "Multiple choice")}
           </option>
+          <option value="MULTIPLE_CHOICE">
+            {tr("Nhiều đáp án đúng", "Multiple correct answers")}
+          </option>
+          <option value="ORDERING">{tr("Sắp xếp", "Ordering")}</option>
+          <option value="RANGE">{tr("Khoảng số", "Number range")}</option>
           <option value="TRUE_FALSE">{tr("Đúng / Sai", "True / False")}</option>
           <option value="TEXT">{tr("Nhập văn bản", "Text answer")}</option>
+          <option value="INFO">{tr("Trang thông tin", "Info slide")}</option>
         </select>
         <label>
           <Clock3 />
@@ -3977,7 +4075,64 @@ function QuestionForm({
         onChange={(e) => onChange({ ...q, prompt: e.target.value })}
         placeholder={tr("Nhập câu hỏi...", "Enter a question...")}
       />
-      {q.type === "TEXT" ? (
+      {q.type === "INFO" ? (
+        <div className="info-slide-editor">
+          <CircleHelp />
+          <div>
+            <b>{tr("Slide thông tin không chấm điểm", "Info slides are not scored")}</b>
+            <p>
+              {tr(
+                "Slide sẽ tự chuyển tiếp theo thời gian đã chọn và có thể được giọng đọc phát cho người chơi.",
+                "The slide advances after its timer and can be read aloud to players.",
+              )}
+            </p>
+          </div>
+        </div>
+      ) : q.type === "RANGE" ? (
+        <div className="range-editor">
+          <label>
+            {tr("Giá trị nhỏ nhất", "Minimum")}
+            <input
+              type="number"
+              value={q.options[0]?.text || "0"}
+              onChange={(event) =>
+                setOption(q.options[0]!.id, event.target.value)
+              }
+            />
+          </label>
+          <label>
+            {tr("Giá trị lớn nhất", "Maximum")}
+            <input
+              type="number"
+              value={q.options[1]?.text || "100"}
+              onChange={(event) =>
+                setOption(q.options[1]!.id, event.target.value)
+              }
+            />
+          </label>
+          <label>
+            {tr("Đáp án mục tiêu", "Target answer")}
+            <input
+              type="number"
+              value={q.correctOptionId}
+              onChange={(event) =>
+                onChange({ ...q, correctOptionId: event.target.value })
+              }
+            />
+          </label>
+          <label>
+            {tr("Sai số cho phép (±)", "Allowed tolerance (±)")}
+            <input
+              type="number"
+              min={0}
+              value={q.acceptedAnswers[0] || "0"}
+              onChange={(event) =>
+                onChange({ ...q, acceptedAnswers: [event.target.value] })
+              }
+            />
+          </label>
+        </div>
+      ) : q.type === "TEXT" ? (
         <label className="accepted">
           {tr("Các đáp án được chấp nhận", "Accepted answers")}
           <input
@@ -4006,15 +4161,22 @@ function QuestionForm({
             <div
               className={cx(
                 "option-row",
-                q.correctOptionId === o.id && "correct",
+                (q.correctOptionId === o.id ||
+                  q.acceptedAnswers.includes(o.id)) &&
+                  "correct",
+                q.type === "ORDERING" && "ordering",
               )}
               key={o.id}
             >
               <button
                 className="correct-radio"
-                onClick={() => onChange({ ...q, correctOptionId: o.id })}
+                onClick={() => toggleCorrectOption(o.id)}
+                disabled={q.type === "ORDERING"}
               >
-                {q.correctOptionId === o.id ? (
+                {q.type === "ORDERING" ? (
+                  i + 1
+                ) : q.correctOptionId === o.id ||
+                  q.acceptedAnswers.includes(o.id) ? (
                   <Check />
                 ) : (
                   String.fromCharCode(65 + i)
@@ -4024,6 +4186,24 @@ function QuestionForm({
                 value={o.text}
                 onChange={(e) => setOption(o.id, e.target.value)}
               />
+              {q.type === "ORDERING" && (
+                <span className="option-order-buttons">
+                  <button
+                    type="button"
+                    disabled={i === 0}
+                    onClick={() => moveOption(i, -1)}
+                  >
+                    <ArrowUp />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={i === q.options.length - 1}
+                    onClick={() => moveOption(i, 1)}
+                  >
+                    <ArrowDown />
+                  </button>
+                </span>
+              )}
               {q.options.length > 2 && (
                 <button
                   className="icon-button"
@@ -4036,6 +4216,10 @@ function QuestionForm({
                         q.correctOptionId === o.id
                           ? options[0]?.id || ""
                           : q.correctOptionId,
+                      acceptedAnswers:
+                        q.type === "ORDERING"
+                          ? options.map((option) => option.id)
+                          : q.acceptedAnswers.filter((id) => id !== o.id),
                     });
                   }}
                 >
@@ -4285,6 +4469,7 @@ function useGameSocket(
       "answer:accepted",
       "host:progress",
       "session:ended",
+      "session:empty",
       "player:kicked",
     ])
       socket.on(name, (data) => onEvent(name, data));
@@ -4363,10 +4548,166 @@ function StartCountdown({ startedAt }: { startedAt: string }) {
   );
 }
 
+function MultipleChoiceAnswer({
+  options,
+  selected,
+  disabled,
+  onChange,
+  onSubmit,
+}: {
+  options: Option[];
+  selected: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+  onSubmit: (value: string) => void;
+}) {
+  const { tr } = usePreferences();
+  const selectedIds = parseAnswerList(selected);
+  function toggle(id: string) {
+    const next = selectedIds.includes(id)
+      ? selectedIds.filter((value) => value !== id)
+      : [...selectedIds, id];
+    onChange(JSON.stringify(next));
+  }
+  return (
+    <div className="structured-answer">
+      <div className="answer-grid">
+        {options.map((option, index) => {
+          const active = selectedIds.includes(option.id);
+          return (
+            <button
+              type="button"
+              key={option.id}
+              className={cx("answer-option", active && "selected")}
+              disabled={disabled}
+              onClick={() => toggle(option.id)}
+            >
+              <span>{String.fromCharCode(65 + index)}</span>
+              {option.text}
+              {active && <Check />}
+            </button>
+          );
+        })}
+      </div>
+      <button
+        className="button button-primary structured-submit"
+        disabled={disabled || selectedIds.length === 0}
+        onClick={() => onSubmit(JSON.stringify(selectedIds))}
+      >
+        <Check /> {tr("Chốt đáp án", "Submit answers")}
+      </button>
+    </div>
+  );
+}
+
+function OrderingAnswer({
+  options,
+  selected,
+  disabled,
+  onChange,
+  onSubmit,
+}: {
+  options: Option[];
+  selected: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+  onSubmit: (value: string) => void;
+}) {
+  const { tr } = usePreferences();
+  const parsed = parseAnswerList(selected);
+  const ids =
+    parsed.length === options.length
+      ? parsed
+      : options.map((option) => option.id);
+  const byId = new Map(options.map((option) => [option.id, option]));
+  function move(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= ids.length) return;
+    const next = [...ids];
+    [next[index], next[target]] = [next[target]!, next[index]!];
+    onChange(JSON.stringify(next));
+  }
+  return (
+    <div className="structured-answer ordering-answer">
+      {ids.map((id, index) => (
+        <div className="ordering-answer-row" key={id}>
+          <b>{index + 1}</b>
+          <span>{byId.get(id)?.text}</span>
+          <button
+            type="button"
+            disabled={disabled || index === 0}
+            onClick={() => move(index, -1)}
+          >
+            <ArrowUp />
+          </button>
+          <button
+            type="button"
+            disabled={disabled || index === ids.length - 1}
+            onClick={() => move(index, 1)}
+          >
+            <ArrowDown />
+          </button>
+        </div>
+      ))}
+      <button
+        className="button button-primary structured-submit"
+        disabled={disabled}
+        onClick={() => onSubmit(JSON.stringify(ids))}
+      >
+        <Check /> {tr("Xác nhận thứ tự", "Submit order")}
+      </button>
+    </div>
+  );
+}
+
+function RangeAnswer({
+  question,
+  selected,
+  disabled,
+  onChange,
+  onSubmit,
+}: {
+  question: Pick<Question, "options">;
+  selected: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+  onSubmit: (value: string) => void;
+}) {
+  const { tr } = usePreferences();
+  const minimum = Number(question.options[0]?.text || "0");
+  const maximum = Number(question.options[1]?.text || "100");
+  const midpoint = String(Math.round((minimum + maximum) / 2));
+  const value = selected || midpoint;
+  return (
+    <div className="structured-answer range-answer">
+      <output>{value}</output>
+      <input
+        type="range"
+        min={minimum}
+        max={maximum}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <div className="range-limits">
+        <span>{minimum}</span>
+        <span>{maximum}</span>
+      </div>
+      <button
+        className="button button-primary structured-submit"
+        disabled={disabled}
+        onClick={() => onSubmit(value)}
+      >
+        <Target /> {tr("Chốt giá trị", "Submit value")}
+      </button>
+    </div>
+  );
+}
+
 function PlayerGame() {
   const { id = "" } = useParams();
   const nav = useNavigate();
-  const { t, tr } = usePreferences();
+  const { locale, t, tr } = usePreferences();
   const token = playerToken(id);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [selected, setSelected] = useState("");
@@ -4416,14 +4757,13 @@ function PlayerGame() {
     const context = new AudioContextClass();
     const oscillator = context.createOscillator();
     const gain = context.createGain();
-    const correct =
-      snapshot?.currentQuestion?.type === "TEXT"
-        ? reveal.acceptedAnswers?.some(
-            (answer: string) =>
-              answer.trim().toLocaleLowerCase("vi-VN") ===
-              selected.trim().toLocaleLowerCase("vi-VN"),
-          )
-        : selected === reveal.correctOptionId;
+    const correct = snapshot?.currentQuestion
+      ? isRevealedAnswerCorrect(
+          snapshot.currentQuestion.type,
+          selected,
+          reveal,
+        )
+      : false;
     oscillator.frequency.value = correct ? 660 : 190;
     gain.gain.setValueAtTime(0.08, context.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.001, context.currentTime + 0.18);
@@ -4517,15 +4857,14 @@ function PlayerGame() {
   const isLastQuestion =
     snapshot.session.currentQuestionIndex ===
     snapshot.session.questionOrder.length - 1;
-  const selectedIsCorrect = activeReveal
-    ? snapshot.currentQuestion?.type === "TEXT"
-      ? activeReveal.acceptedAnswers.some(
-          (answer: string) =>
-            answer.trim().toLocaleLowerCase("vi-VN") ===
-            selected.trim().toLocaleLowerCase("vi-VN"),
+  const selectedIsCorrect =
+    activeReveal && snapshot.currentQuestion
+      ? isRevealedAnswerCorrect(
+          snapshot.currentQuestion.type,
+          selected,
+          activeReveal,
         )
-      : selected === activeReveal.correctOptionId
-    : false;
+      : false;
   return (
     <main className="game-page">
       <div className="game-top">
@@ -4558,6 +4897,11 @@ function PlayerGame() {
             snapshot.session.state === "ENDED" ||
             snapshot.session.state === "CANCELLED"
           }
+        />
+        <QuestionVoice
+          question={snapshot.currentQuestion}
+          locale={locale}
+          tr={tr}
         />
         <PreferenceControls compact />
       </div>
@@ -4670,6 +5014,52 @@ function PlayerGame() {
                     }
                     onAnswer={answer}
                   />
+                ) : snapshot.currentQuestion.type === "MULTIPLE_CHOICE" ? (
+                  <MultipleChoiceAnswer
+                    options={snapshot.currentQuestion.options}
+                    selected={selected}
+                    disabled={
+                      expired ||
+                      !!result ||
+                      snapshot.session.state !== "RUNNING"
+                    }
+                    onChange={setSelected}
+                    onSubmit={answer}
+                  />
+                ) : snapshot.currentQuestion.type === "ORDERING" ? (
+                  <OrderingAnswer
+                    options={snapshot.currentQuestion.options}
+                    selected={selected}
+                    disabled={
+                      expired ||
+                      !!result ||
+                      snapshot.session.state !== "RUNNING"
+                    }
+                    onChange={setSelected}
+                    onSubmit={answer}
+                  />
+                ) : snapshot.currentQuestion.type === "RANGE" ? (
+                  <RangeAnswer
+                    question={snapshot.currentQuestion}
+                    selected={selected}
+                    disabled={
+                      expired ||
+                      !!result ||
+                      snapshot.session.state !== "RUNNING"
+                    }
+                    onChange={setSelected}
+                    onSubmit={answer}
+                  />
+                ) : snapshot.currentQuestion.type === "INFO" ? (
+                  <div className="info-slide-player">
+                    <CircleHelp />
+                    <p>
+                      {tr(
+                        "Slide thông tin — không cần gửi đáp án.",
+                        "Information slide — no answer required.",
+                      )}
+                    </p>
+                  </div>
                 ) : (
                   <div className="answer-grid">
                     {snapshot.currentQuestion.options.map((o, i) => (
@@ -4684,7 +5074,10 @@ function PlayerGame() {
                           "answer-option",
                           selected === o.id && "selected",
                           activeReveal &&
-                            o.id === activeReveal.correctOptionId &&
+                            (o.id === activeReveal.correctOptionId ||
+                              (snapshot.currentQuestion?.type ===
+                                "MULTIPLE_CHOICE" &&
+                                activeReveal.acceptedAnswers.includes(o.id))) &&
                             "correct",
                           activeReveal &&
                             selected === o.id &&
@@ -4987,7 +5380,7 @@ function TeamLeaderboard({
 }
 
 function HostGame() {
-  const { tr } = usePreferences();
+  const { locale, tr } = usePreferences();
   const { id = "" } = useParams();
   const nav = useNavigate();
   const token = hostToken();
@@ -5032,6 +5425,15 @@ function HostGame() {
       }
     }
     if (name === "host:progress") setProgress(data);
+    if (name === "session:empty") {
+      toast.show(
+        data?.message ||
+          tr(
+            "Không còn người chơi trong phòng chơi",
+            "There are no players left in the room",
+          ),
+      );
+    }
     if (name === "question:revealed") {
       if (data?.session) {
         setSnapshot(data);
@@ -5181,6 +5583,11 @@ function HostGame() {
           >
             <Volume2 />
           </button>
+          <QuestionVoice
+            question={snapshot.currentQuestion}
+            locale={locale}
+            tr={tr}
+          />
           <button
             className="icon-button"
             title={tr("Toàn màn hình", "Fullscreen")}
@@ -5309,7 +5716,10 @@ function HostGame() {
                       className={cx(
                         phase === "QUESTION_PREVIEW" && "preview-sequence",
                         activeReveal &&
-                          o.id === activeReveal.correctOptionId &&
+                          (o.id === activeReveal.correctOptionId ||
+                            (snapshot.currentQuestion?.type ===
+                              "MULTIPLE_CHOICE" &&
+                              activeReveal.acceptedAnswers.includes(o.id))) &&
                           "correct",
                       )}
                       style={
@@ -5322,7 +5732,12 @@ function HostGame() {
                       <span>{["▲", "◆", "●", "■", "★", "⬟"][i]}</span>
                       {o.text}
                       {activeReveal &&
-                        o.id === activeReveal.correctOptionId && <Check />}
+                        (o.id === activeReveal.correctOptionId ||
+                          (snapshot.currentQuestion?.type ===
+                            "MULTIPLE_CHOICE" &&
+                            activeReveal.acceptedAnswers.includes(o.id))) && (
+                          <Check />
+                        )}
                     </div>
                   ))}
                 </div>
@@ -5632,9 +6047,18 @@ function HostLobby({
               <span>{tr("MÃ PIN", "GAME PIN")}</span>
               <b>{snapshot.session.pin}</b>
               <button
-                onClick={() => {
-                  void navigator.clipboard.writeText(snapshot.session.pin);
-                  toast.show(tr("Đã sao chép PIN.", "PIN copied."));
+                onClick={async () => {
+                  try {
+                    await copyText(snapshot.session.pin);
+                    toast.show(tr("Đã sao chép PIN.", "PIN copied."));
+                  } catch {
+                    toast.show(
+                      tr(
+                        "Không thể sao chép PIN.",
+                        "The PIN could not be copied.",
+                      ),
+                    );
+                  }
                 }}
               >
                 <Copy />
@@ -5652,11 +6076,20 @@ function HostLobby({
               <code>{joinUrl.replace(/^https?:\/\//, "")}</code>
               <button
                 type="button"
-                onClick={() => {
-                  void navigator.clipboard.writeText(joinUrl);
-                  toast.show(
-                    tr("Đã sao chép liên kết tham gia.", "Join link copied."),
-                  );
+                onClick={async () => {
+                  try {
+                    await copyText(joinUrl);
+                    toast.show(
+                      tr("Đã sao chép liên kết tham gia.", "Join link copied."),
+                    );
+                  } catch {
+                    toast.show(
+                      tr(
+                        "Không thể sao chép liên kết.",
+                        "The link could not be copied.",
+                      ),
+                    );
+                  }
                 }}
               >
                 <Copy /> {tr("Sao chép link", "Copy link")}
@@ -6060,6 +6493,7 @@ function PracticeQuiz() {
     correct: boolean;
     correctOptionId: string;
     correctAnswer: string;
+    acceptedAnswers: string[];
     explanation: string;
   } | null>(null);
   const [error, setError] = useState("");
@@ -6131,7 +6565,12 @@ function PracticeQuiz() {
 
   async function checkAnswer(event: FormEvent) {
     event.preventDefault();
-    if (!answer || result) return;
+    await submitPracticeAnswer(answer);
+  }
+
+  async function submitPracticeAnswer(value: string) {
+    if (!value || result) return;
+    setAnswer(value);
     setBusy(true);
     setError("");
     try {
@@ -6139,10 +6578,11 @@ function PracticeQuiz() {
         correct: boolean;
         correctOptionId: string;
         correctAnswer: string;
+        acceptedAnswers: string[];
         explanation: string;
       }>(`/quizzes/${id}/practice/${question!.id}/check`, {
         method: "POST",
-        body: JSON.stringify({ answer }),
+        body: JSON.stringify({ answer: value }),
       });
       setResult(checked);
       if (checked.correct) setScore((current) => current + 1);
@@ -6180,7 +6620,41 @@ function PracticeQuiz() {
             {tr("Câu", "Question")} {index + 1}
           </span>
           <h1>{question.prompt}</h1>
-          {question.type === "TEXT" ? (
+          {question.type === "INFO" ? (
+            <div className="info-slide-player">
+              <CircleHelp />
+              <p>
+                {tr(
+                  "Đây là slide cung cấp thông tin, không tính điểm.",
+                  "This information slide is not scored.",
+                )}
+              </p>
+            </div>
+          ) : question.type === "MULTIPLE_CHOICE" ? (
+            <MultipleChoiceAnswer
+              options={question.options}
+              selected={answer}
+              disabled={Boolean(result) || busy}
+              onChange={setAnswer}
+              onSubmit={(value) => void submitPracticeAnswer(value)}
+            />
+          ) : question.type === "ORDERING" ? (
+            <OrderingAnswer
+              options={question.options}
+              selected={answer}
+              disabled={Boolean(result) || busy}
+              onChange={setAnswer}
+              onSubmit={(value) => void submitPracticeAnswer(value)}
+            />
+          ) : question.type === "RANGE" ? (
+            <RangeAnswer
+              question={question}
+              selected={answer}
+              disabled={Boolean(result) || busy}
+              onChange={setAnswer}
+              onSubmit={(value) => void submitPracticeAnswer(value)}
+            />
+          ) : question.type === "TEXT" ? (
             <input
               className="practice-text-answer"
               value={answer}
@@ -6248,7 +6722,19 @@ function PracticeQuiz() {
                 "Each question can only be answered once.",
               )}
             </span>
-            {result ? (
+            {question.type === "INFO" ? (
+              <button
+                type="button"
+                className="button button-primary"
+                onClick={() => {
+                  setIndex((current) => current + 1);
+                  setAnswer("");
+                  setResult(null);
+                }}
+              >
+                {tr("Tiếp tục", "Continue")} <ChevronRight />
+              </button>
+            ) : result ? (
               <button
                 type="button"
                 className="button button-primary"
@@ -6428,6 +6914,7 @@ export default function App() {
         <Route path="/dashboard/settings" element={<SettingsPage />} />
         <Route path="/admin/*" element={<AdminPage />} />
         <Route path="/ai-create" element={<AiCreatePage />} />
+        <Route path="/editor/new" element={<QuestionTypePicker />} />
         <Route path="/editor/:id" element={<Editor />} />
         <Route path="/join" element={<Join />} />
         <Route path="/join/:pin" element={<Join />} />

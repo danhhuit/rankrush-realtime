@@ -19,6 +19,16 @@
   background:
     radial-gradient(circle at 88% 0%, rgb(43 159 189 / 7%), transparent 28%),
     var(--admin-bg);
+  font-family: "DM Sans", sans-serif;
+}
+
+.admin-shell button,
+.admin-shell input,
+.admin-shell select,
+.admin-shell textarea,
+.admin-shell table,
+.admin-shell code {
+  font-family: inherit;
 }
 
 .admin-sidebar {
@@ -144,6 +154,36 @@
   padding: 20px 22px;
 }
 
+.admin-toolbar {
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 18px 20px;
+}
+
+.admin-toolbar .admin-search {
+  flex: 1 1 300px;
+  width: auto;
+  min-width: 240px;
+  height: 46px;
+  border-radius: 12px;
+  background: var(--admin-surface);
+}
+
+.admin-toolbar > .admin-filter-select {
+  flex: 0 1 220px;
+  width: auto;
+  min-width: 180px;
+  height: 46px;
+  border-radius: 12px;
+  background: var(--admin-surface);
+}
+
+.admin-toolbar > .admin-button {
+  min-height: 46px;
+  margin-left: auto;
+}
+
 .admin-toolbar > select:focus,
 .admin-search:focus-within,
 .admin-assistant-grid input:focus,
@@ -153,6 +193,79 @@
 .admin-modal-form select:focus {
   border-color: var(--purple);
   box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.admin-table-panel .admin-table {
+  min-width: 1080px;
+  font-size: 13px;
+}
+
+.admin-table th {
+  font-size: 11px;
+  letter-spacing: 0.035em;
+}
+
+.admin-sensitive-cell,
+.admin-pin-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-sensitive-cell {
+  min-width: 245px;
+}
+
+.admin-sensitive-cell > div {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.admin-sensitive-cell small {
+  display: block;
+  color: var(--admin-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.admin-sensitive-cell small b {
+  color: var(--admin-text);
+  font-weight: 700;
+}
+
+.admin-visibility-toggle {
+  display: grid;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  place-items: center;
+  padding: 0;
+  color: var(--purple-dark);
+  border: 1px solid var(--admin-border);
+  border-radius: 10px;
+  background: var(--purple-soft);
+}
+
+.admin-visibility-toggle:hover {
+  border-color: var(--purple);
+  background: color-mix(in srgb, var(--purple-soft) 72%, var(--purple) 28%);
+}
+
+.admin-visibility-toggle svg {
+  width: 16px;
+  height: 16px;
+}
+
+.admin-pin-cell code {
+  min-width: 62px;
+  color: var(--admin-text);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.admin-activity-panel .admin-pagination {
+  border-top: 1px solid var(--admin-border);
 }
 
 .admin-modal-form .admin-password-wrapper {
@@ -330,9 +443,10 @@
 }
 
 .admin-theme-toggle {
-  min-width: 124px;
+  width: 44px;
+  min-width: 44px;
   justify-content: center;
-  padding: 0 14px;
+  padding: 0;
   font: inherit;
   font-size: 12px;
   font-weight: 800;

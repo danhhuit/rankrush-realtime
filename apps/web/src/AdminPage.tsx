@@ -581,7 +581,7 @@ function AdminConfirm({
 }
 
 function AdminAppearance() {
-  const { locale, setLocale, theme, toggleTheme, t, tr } = usePreferences();
+  const { locale, setLocale, theme, toggleTheme, t } = usePreferences();
   return (
     <div className="admin-preferences">
       <label className="admin-language-control" title={t("language")}>
@@ -603,11 +603,6 @@ function AdminAppearance() {
         aria-label={t("appearance")}
       >
         {theme === "dark" ? <Moon /> : <Sun />}
-        <span>
-          {theme === "dark"
-            ? tr("Chế độ tối", "Dark mode")
-            : tr("Chế độ sáng", "Light mode")}
-        </span>
       </button>
     </div>
   );
@@ -893,6 +888,10 @@ function AdminUsers({ refresh }: { refresh: number }) {
   );
   const [query, setQuery] = useState("");
   const [role, setRole] = useState<"ALL" | "HOST" | "ADMIN">("ALL");
+  const [status, setStatus] = useState<"ALL" | "ACTIVE" | "SUSPENDED">("ALL");
+  const [revealedUsers, setRevealedUsers] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [busy, setBusy] = useState(false);
   const [page, setPage] = useState(1);
@@ -902,7 +901,7 @@ function AdminUsers({ refresh }: { refresh: number }) {
   const [resetError, setResetError] = useState("");
   const [notice, setNotice] = useState("");
 
-  useEffect(() => setPage(1), [query, role]);
+  useEffect(() => setPage(1), [query, role, status]);
 
   const visible = useMemo(
     () =>
@@ -913,10 +912,11 @@ function AdminUsers({ refresh }: { refresh: number }) {
           );
         return (
           (role === "ALL" || user.role === role) &&
+          (status === "ALL" || user.status === status) &&
           text.includes(query.trim().toLocaleLowerCase("vi-VN"))
         );
       }),
-    [data, query, role],
+    [data, query, role, status],
   );
   const update = async (
     user: AdminUser,
@@ -1015,12 +1015,24 @@ function AdminUsers({ refresh }: { refresh: number }) {
           />
         </label>
         <select
+          className="admin-filter-select"
           value={role}
           onChange={(event) => setRole(event.target.value as typeof role)}
+          aria-label={tr("Lọc theo vai trò", "Filter by role")}
         >
           <option value="ALL">{tr("Tất cả vai trò", "All roles")}</option>
           <option value="HOST">Host</option>
           <option value="ADMIN">Admin</option>
+        </select>
+        <select
+          className="admin-filter-select"
+          value={status}
+          onChange={(event) => setStatus(event.target.value as typeof status)}
+          aria-label={tr("Lọc theo trạng thái", "Filter by status")}
+        >
+          <option value="ALL">{tr("Tất cả trạng thái", "All statuses")}</option>
+          <option value="ACTIVE">{tr("Hoạt động", "Active")}</option>
+          <option value="SUSPENDED">{tr("Tạm khóa", "Suspended")}</option>
         </select>
         <button
           className="admin-button"
@@ -1043,6 +1055,7 @@ function AdminUsers({ refresh }: { refresh: number }) {
             <thead>
               <tr>
                 <th>{tr("Người dùng", "User")}</th>
+                <th>{tr("Thông tin đăng nhập", "Login information")}</th>
                 <th>{tr("Vai trò", "Role")}</th>
                 <th>{tr("Dữ liệu", "Data")}</th>
                 <th>{tr("Ngày tạo", "Created")}</th>
@@ -1060,10 +1073,57 @@ function AdminUsers({ refresh }: { refresh: number }) {
                       </span>
                       <div>
                         <b>{user.displayName}</b>
+                        <small>#{user.id}</small>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <div className="admin-sensitive-cell">
+                      <div>
                         <small>
-                          @{user.username} · {user.email}
+                          {tr("Tên tài khoản", "Username")}:{" "}
+                          <b>
+                            {revealedUsers.has(user.id)
+                              ? `@${user.username}`
+                              : "••••••••"}
+                          </b>
+                        </small>
+                        <small>
+                          Email:{" "}
+                          <b>
+                            {revealedUsers.has(user.id)
+                              ? user.email
+                              : "••••••••"}
+                          </b>
+                        </small>
+                        <small>
+                          {tr("Mật khẩu", "Password")}:{" "}
+                          <b>
+                            {revealedUsers.has(user.id)
+                              ? tr("Đã mã hóa", "Encrypted")
+                              : "••••••••"}
+                          </b>
                         </small>
                       </div>
+                      <button
+                        type="button"
+                        className="admin-visibility-toggle"
+                        title={
+                          revealedUsers.has(user.id)
+                            ? tr("Ẩn thông tin", "Hide information")
+                            : tr("Hiện thông tin", "Show information")
+                        }
+                        onClick={() =>
+                          setRevealedUsers((current) => {
+                            const next = new Set(current);
+                            if (next.has(user.id)) next.delete(user.id);
+                            else next.add(user.id);
+                            return next;
+                          })
+                        }
+                      >
+                        {revealedUsers.has(user.id) ? <EyeOff /> : <Eye />}
+                      </button>
                     </div>
                   </td>
                   <td>
@@ -1224,15 +1284,37 @@ function AdminSessions({ refresh }: { refresh: number }) {
     refresh,
   );
   const [filter, setFilter] = useState("ALL");
+  const [query, setQuery] = useState("");
+  const [revealedPins, setRevealedPins] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null);
   const [busy, setBusy] = useState(false);
   const [page, setPage] = useState(1);
 
-  useEffect(() => setPage(1), [filter]);
+  useEffect(() => setPage(1), [filter, query]);
 
-  const visible = (data || []).filter(
-    (session) => filter === "ALL" || session.state === filter,
-  );
+  const visible = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase("vi-VN");
+    return (data || []).filter((session) => {
+      const searchable = [
+        session.id,
+        session.pin,
+        session.quiz?.title,
+        session.quiz?.category,
+        session.host?.displayName,
+        session.host?.username,
+        session.host?.email,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLocaleLowerCase("vi-VN");
+      return (
+        (filter === "ALL" || session.state === filter) &&
+        (!normalizedQuery || searchable.includes(normalizedQuery))
+      );
+    });
+  }, [data, filter, query]);
   const stopRoom = async (session: AdminSession) => {
     setBusy(true);
     try {
@@ -1259,21 +1341,33 @@ function AdminSessions({ refresh }: { refresh: number }) {
     <section className="admin-panel admin-table-panel">
       <AdminError message={error} />
       <div className="admin-toolbar">
-        <div className="admin-filter-tabs">
+        <label className="admin-search">
+          <Search />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={tr(
+              "Tìm quiz, host, PIN hoặc mã phòng...",
+              "Search quiz, host, PIN or room ID...",
+            )}
+          />
+        </label>
+        <select
+          className="admin-filter-select"
+          value={filter}
+          onChange={(event) => setFilter(event.target.value)}
+          aria-label={tr("Lọc trạng thái phòng", "Filter room status")}
+        >
           {["ALL", "LOBBY", "RUNNING", "PAUSED", "ENDED", "CANCELLED"].map(
             (state) => (
-              <button
-                key={state}
-                className={filter === state ? "active" : ""}
-                onClick={() => setFilter(state)}
-              >
+              <option key={state} value={state}>
                 {state === "ALL"
-                  ? tr("Tất cả", "All")
+                  ? tr("Tất cả trạng thái", "All statuses")
                   : sessionLabel(state, tr)}
-              </button>
+              </option>
             ),
           )}
-        </div>
+        </select>
       </div>
       {loading && !data ? (
         <AdminLoading />
@@ -1310,7 +1404,33 @@ function AdminSessions({ refresh }: { refresh: number }) {
                       </small>
                     </td>
                     <td>
-                      <code>{session.pin || "—"}</code>
+                      <div className="admin-pin-cell">
+                        <code>
+                          {revealedPins.has(session.id)
+                            ? session.pin || "—"
+                            : "••••••"}
+                        </code>
+                        <button
+                          type="button"
+                          className="admin-visibility-toggle"
+                          title={
+                            revealedPins.has(session.id)
+                              ? tr("Ẩn mã PIN", "Hide PIN")
+                              : tr("Hiện mã PIN", "Show PIN")
+                          }
+                          onClick={() =>
+                            setRevealedPins((current) => {
+                              const next = new Set(current);
+                              if (next.has(session.id))
+                                next.delete(session.id);
+                              else next.add(session.id);
+                              return next;
+                            })
+                          }
+                        >
+                          {revealedPins.has(session.id) ? <EyeOff /> : <Eye />}
+                        </button>
+                      </div>
                     </td>
                     <td>
                       <b>{session.playerCount}</b>
@@ -1393,13 +1513,22 @@ function AdminActivity({ refresh }: { refresh: number }) {
     "/admin/activity?limit=100",
     refresh,
   );
+  const [query, setQuery] = useState("");
+  const [scope, setScope] = useState<"ALL" | "ADMIN" | "SESSION">("ALL");
+  const [eventType, setEventType] = useState("ALL");
+  const [page, setPage] = useState(1);
   const label = (row: ActivityRow) =>
     ({
       SESSION_CREATED: tr("Phòng chơi được tạo", "Game room created"),
       SESSION_STATE_CHANGED: tr("Phòng đổi trạng thái", "Room state changed"),
       PLAYER_JOINED: tr("Người chơi tham gia", "Player joined"),
       ANSWER_SUBMITTED: tr("Đã gửi câu trả lời", "Answer submitted"),
+      USER_CREATED: tr("Tạo tài khoản", "User created"),
       USER_UPDATED: tr("Cập nhật người dùng", "User updated"),
+      USER_PASSWORD_RESET: tr("Đặt lại mật khẩu", "Password reset"),
+      BACKUP_CREATED: tr("Tạo bản sao lưu", "Backup created"),
+      BACKUP_DELETED: tr("Xóa bản sao lưu", "Backup deleted"),
+      BACKUP_RESTORED: tr("Khôi phục bản sao lưu", "Backup restored"),
     })[row.type] || row.type;
   const detail = (row: ActivityRow) =>
     row.type === "SESSION_STATE_CHANGED"
@@ -1413,37 +1542,109 @@ function AdminActivity({ refresh }: { refresh: number }) {
             : row.sessionId
               ? `Session ${row.sessionId}`
               : tr("Hoạt động quản trị", "Admin activity");
+  useEffect(() => setPage(1), [query, scope, eventType]);
+  const eventTypes = Array.from(new Set((data || []).map((row) => row.type)));
+  const normalizedQuery = query.trim().toLocaleLowerCase("vi-VN");
+  const visible = (data || []).filter((row) => {
+    const searchable = [
+      label(row),
+      detail(row),
+      row.type,
+      row.sessionId,
+      ...Object.values(row.details),
+    ]
+      .join(" ")
+      .toLocaleLowerCase("vi-VN");
+    return (
+      (scope === "ALL" || row.scope === scope) &&
+      (eventType === "ALL" || row.type === eventType) &&
+      (!normalizedQuery || searchable.includes(normalizedQuery))
+    );
+  });
+  const totalPages = Math.ceil(visible.length / 12);
+  const pagedVisible = visible.slice((page - 1) * 12, page * 12);
   return (
-    <section className="admin-panel">
+    <section className="admin-panel admin-activity-panel">
       <AdminError message={error} />
+      <div className="admin-toolbar">
+        <label className="admin-search">
+          <Search />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={tr(
+              "Tìm sự kiện, phòng hoặc nội dung...",
+              "Search events, rooms or details...",
+            )}
+          />
+        </label>
+        <select
+          className="admin-filter-select"
+          value={scope}
+          onChange={(event) => setScope(event.target.value as typeof scope)}
+          aria-label={tr("Lọc phạm vi", "Filter scope")}
+        >
+          <option value="ALL">{tr("Tất cả phạm vi", "All scopes")}</option>
+          <option value="SESSION">{tr("Phòng chơi", "Game rooms")}</option>
+          <option value="ADMIN">{tr("Quản trị", "Administration")}</option>
+        </select>
+        <select
+          className="admin-filter-select"
+          value={eventType}
+          onChange={(event) => setEventType(event.target.value)}
+          aria-label={tr("Lọc loại sự kiện", "Filter event type")}
+        >
+          <option value="ALL">{tr("Tất cả sự kiện", "All events")}</option>
+          {eventTypes.map((type) => (
+            <option key={type} value={type}>
+              {label({
+                id: "",
+                scope: "SESSION",
+                sessionId: "",
+                type,
+                at: "",
+                details: {},
+              })}
+            </option>
+          ))}
+        </select>
+      </div>
       {loading && !data ? (
         <AdminLoading />
       ) : (
-        <div className="admin-timeline">
-          {(data || []).map((row) => (
-            <article key={row.id}>
-              <span
-                className={`admin-activity-icon ${row.scope.toLowerCase()}`}
-              >
-                {row.scope === "ADMIN" ? <Shield /> : <Activity />}
-              </span>
-              <div>
-                <b>{label(row)}</b>
-                <p>{detail(row)}</p>
-                <small>{dateTime(row.at, locale)}</small>
+        <>
+          <div className="admin-timeline">
+            {pagedVisible.map((row) => (
+              <article key={row.id}>
+                <span
+                  className={`admin-activity-icon ${row.scope.toLowerCase()}`}
+                >
+                  {row.scope === "ADMIN" ? <Shield /> : <Activity />}
+                </span>
+                <div>
+                  <b>{label(row)}</b>
+                  <p>{detail(row)}</p>
+                  <small>{dateTime(row.at, locale)}</small>
+                </div>
+                {row.sessionId && <code>{row.sessionId}</code>}
+              </article>
+            ))}
+            {!visible.length && (
+              <div className="admin-empty">
+                {tr(
+                  "Không tìm thấy hoạt động phù hợp.",
+                  "No matching activity was found.",
+                )}
               </div>
-              {row.sessionId && <code>{row.sessionId}</code>}
-            </article>
-          ))}
-          {!data?.length && (
-            <div className="admin-empty">
-              {tr(
-                "Chưa có hoạt động để hiển thị.",
-                "No activity to display yet.",
-              )}
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+          <Pagination
+            page={page}
+            total={totalPages}
+            onPageChange={setPage}
+            tr={tr}
+          />
+        </>
       )}
     </section>
   );

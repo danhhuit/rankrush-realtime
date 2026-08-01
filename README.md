@@ -149,10 +149,12 @@ PUBLIC_WEB_URL=https://your-public-domain.example
 
 Khởi động lại API sau khi đổi biến môi trường.
 
-## AI cục bộ bằng Ollama
+## AI Gemini với Ollama dự phòng
 
-Mặc định backend gọi Ollama tại `http://127.0.0.1:11434` với model
-`qwen2.5:3b`:
+Backend ưu tiên Gemini để tạo câu hỏi đa dạng từ chủ đề/PDF, kiểm định chất
+lượng bằng lượt gọi độc lập, loại câu gần trùng và tự tạo lại câu không đạt
+ngưỡng. Nếu Gemini không khả dụng, hệ thống tự chuyển sang Ollama tại
+`http://127.0.0.1:11434`, sau đó mới dùng generator local:
 
 ```powershell
 ollama pull qwen2.5:3b
@@ -160,25 +162,34 @@ ollama list
 ```
 
 RankRush yêu cầu kết quả theo JSON Schema, kiểm tra lại bằng Zod và luôn lưu quiz
-AI ở trạng thái nháp để Host rà soát. Giao diện chỉ hiển thị trạng thái
-“Trình tạo câu hỏi AI”, không đưa tên model/công nghệ vào nội dung sản phẩm.
-Nếu AI/model chưa sẵn sàng, backend không tạo quiz chung chung từ PDF mà hướng
-dẫn Host tải mẫu CSV, điền câu hỏi và đáp án đúng rồi nhập lại.
+AI ở trạng thái nháp để Host rà soát. Gemini có thể sinh `SINGLE_CHOICE`,
+`MULTIPLE_CHOICE`, `TRUE_FALSE`, `TEXT`, `ORDERING` và `RANGE`. Response API
+trả thêm `reviewed`, `averageQualityScore` và `regeneratedCount`.
 
 Ô **Mô tả / yêu cầu chi tiết** được đưa trực tiếp vào prompt để xác định đối
 tượng, phạm vi, kiểu dữ kiện và điều cần tránh. Với PDF, model chỉ được dùng dữ
-kiện trong tài liệu và phải tự xác định đáp án đúng. Tệp CSV mẫu có thể tải tại
-`GET /api/ai/csv-template`; các cột `question`, `type` và `correctAnswer` là bắt
-buộc, và backend kiểm tra từng dòng trước khi lưu.
+kiện trong tài liệu và reviewer kiểm tra lại căn cứ, đáp án, độ mơ hồ và phương
+án nhiễu. Tệp CSV mẫu có thể tải tại `GET /api/ai/csv-template`.
 
 Các biến liên quan nằm trong `.env.example`:
 
 ```dotenv
+AI_PROVIDER=GEMINI
+AI_FALLBACK_PROVIDER=OLLAMA
+AI_REVIEW_PROVIDER=GEMINI
+AI_REVIEW_ENABLED=true
+AI_MIN_QUALITY_SCORE=75
+GEMINI_API_KEY=your-key
+GEMINI_MODEL=gemini-3.6-flash
+GEMINI_TIMEOUT_MS=300000
 OLLAMA_ENABLED=true
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=qwen2.5:3b
 OLLAMA_TIMEOUT_MS=300000
 ```
+
+Không đặt `GEMINI_API_KEY` ở frontend và không commit `.env`. Sau khi đổi biến
+môi trường, khởi động lại API.
 
 ## Gửi mã xác nhận email
 
@@ -194,9 +205,9 @@ SMTP_PASS=your-app-password
 SMTP_FROM=RankRush <your-email@gmail.com>
 ```
 
-Với Gmail, dùng App Password thay cho mật khẩu đăng nhập. Trong development,
-`EMAIL_DEV_CODE_ENABLED=true` cho phép trả mã thử nếu SMTP chưa cấu hình. Luôn
-đặt biến này thành `false` trong production.
+Với Gmail, dùng App Password thay cho mật khẩu đăng nhập. RankRush mặc định gửi
+mã trực tiếp qua SMTP và không hiển thị mã thử trên giao diện, vì vậy hãy đặt
+`EMAIL_DEV_CODE_ENABLED=false` ở cả development lẫn production.
 
 `SMTP_USER`/`SMTP_PASS` luôn là thông tin của **một tài khoản gửi**. Mỗi lần đăng
 ký hoặc quên mật khẩu, trường `to` được lấy động từ email người dùng vừa nhập;

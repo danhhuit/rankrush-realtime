@@ -28,7 +28,7 @@ const schema = z.object({
   EMAIL_CODE_TTL_SECONDS: z.coerce.number().int().positive().default(600),
   EMAIL_DEV_CODE_ENABLED: z
     .enum(["true", "false"])
-    .default("true")
+    .default("false")
     .transform((value) => value === "true"),
   SMTP_HOST: z.string().default(""),
   SMTP_PORT: z.coerce.number().int().positive().default(587),
@@ -39,6 +39,17 @@ const schema = z.object({
   SMTP_USER: z.string().default(""),
   SMTP_PASS: z.string().default(""),
   SMTP_FROM: z.string().default("RankRush <no-reply@rankrush.local>"),
+  AI_PROVIDER: z.enum(["GEMINI", "OLLAMA"]).default("OLLAMA"),
+  AI_FALLBACK_PROVIDER: z.enum(["OLLAMA", "LOCAL"]).default("OLLAMA"),
+  AI_REVIEW_PROVIDER: z.enum(["GEMINI", "NONE"]).default("GEMINI"),
+  AI_REVIEW_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((value) => value === "true"),
+  AI_MIN_QUALITY_SCORE: z.coerce.number().int().min(0).max(100).default(75),
+  GEMINI_API_KEY: z.string().default(""),
+  GEMINI_MODEL: z.string().min(1).default("gemini-3.6-flash"),
+  GEMINI_TIMEOUT_MS: z.coerce.number().int().positive().default(300000),
   OLLAMA_ENABLED: z
     .enum(["true", "false"])
     .default("true")
