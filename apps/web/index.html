@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#ffffff" />
+    <script>
+      (() => {
+        try {
+          const saved = localStorage.getItem("rr_theme");
+          const preference = ["system", "light", "dark"].includes(saved)
+            ? saved
+            : "system";
+          const theme =
+            preference === "system"
+              ? window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light"
+              : preference;
+          document.documentElement.dataset.theme = theme;
+          document.documentElement.dataset.themePreference = preference;
+          document.documentElement.style.colorScheme = theme;
+          document
+            .querySelector('meta[name="theme-color"]')
+            ?.setAttribute("content", theme === "dark" ? "#10131a" : "#ffffff");
+        } catch {
+          document.documentElement.dataset.theme = "light";
+        }
+      })();
+    </script>
+    <link rel="icon" type="image/png" href="/brand/rankrush-r2.png" />
+    <meta
+      name="description"
+      content="RankRush - Nền tảng quiz trực tuyến và bảng xếp hạng thời gian thực"
+    />
+    <title>RankRush — Live quiz, real-time glory</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
