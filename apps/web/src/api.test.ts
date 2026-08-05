@@ -48,7 +48,7 @@ describe("playerToken", () => {
     expect(
       new ApiError(409, {
         code: "USERNAME_EXISTS",
-        message: "TÃªn Ä‘Äƒng nháº­p Ä‘Ã£ Ä‘Æ°á»£c sá»­ dá»¥ng.",
+        message: "Tên đăng nhập đã được sử dụng.",
       }).message,
     ).toBe("Tên đăng nhập đã được sử dụng.");
   });

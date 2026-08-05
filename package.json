@@ -11,6 +11,7 @@
     "build": "npm run build --prefix apps/api && npm run build --prefix apps/web",
     "test": "npm run test --prefix apps/api && npm run test --prefix apps/web",
     "seed": "npm run seed --prefix apps/api",
+    "seed:demo": "npm run seed:demo --prefix apps/api",
     "seed:library": "npm run seed:library --prefix apps/api",
     "admin:setup": "npm run admin:setup --prefix apps/api",
     "lint": "npm run lint --prefix apps/api && npm run lint --prefix apps/web"
